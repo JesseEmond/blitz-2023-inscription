@@ -1,0 +1,22 @@
+[package]
+name = "blitz_bot"
+version = "1.0.0"
+edition = "2021"
+
+[profile.release]
+lto = "thin" # Enable Link Time Optimization.
+
+[[bin]]
+name = "application" # Don't change this, our backend expects a fixed binary path
+path = "src/main.rs"
+
+[dependencies]
+futures-util = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.21", features = ["macros", "rt"] }
+tokio-tungstenite = "0.17"
+dotenvy = "0.15"
+env_logger = "0.9"
+log = "*"
+thiserror  = "1.0"

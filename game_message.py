@@ -19,9 +19,19 @@ class Tick:
 
 @dataclass_json
 @dataclass
+class TideLevels:
+  min: int
+  max: int
+
+@dataclass_json
+@dataclass
 class Map:
+    rows: int
+    columns: int
     topology: List[List[int]]
     ports: List[Position]
+    depth: int
+    tideLevels: TideLevels
 
 @dataclass_json
 @dataclass(eq=True, frozen=True, order=True)
