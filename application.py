@@ -8,12 +8,12 @@ import json
 from bot import Bot
 from game_message import Tick
 
-
 async def run():
     uri = "ws://127.0.0.1:8765"
 
     async with websockets.connect(uri) as websocket:
         bot = Bot()
+
         if "TOKEN" in os.environ:
             await websocket.send(json.dumps({"type": "REGISTER", "token": os.environ["TOKEN"]}))
         else:

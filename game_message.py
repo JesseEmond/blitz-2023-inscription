@@ -24,7 +24,7 @@ class Map:
     ports: List[Position]
 
 @dataclass_json
-@dataclass
+@dataclass(eq=True, frozen=True, order=True)
 class Position:
     row: int
     column: int
