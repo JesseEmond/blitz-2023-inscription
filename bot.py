@@ -11,7 +11,7 @@ import pathfinding
 # - topology is [column][row]?
 
 
-def naviguate_towards(src: Position, dst: Position) -> str:
+def direction_towards(src: Position, dst: Position) -> str:
   # x, y
   d = [dst.column - src.column, dst.row - src.row]
   # Normalize to 1/-1
@@ -37,49 +37,61 @@ class Bot:
     print("Initializing your super mega duper bot")
     self.path = []
     self.target_port = None
-    self.ports_plan = None
     self.graph = None
+    self.unseen_ports = None
 
-  def make_plan(self, tick: Tick) -> None:
+  def pick_spawn(self, tick: Tick) -> Position:
+    # TODO smarter spawn picking
     min_tide = tick.tideSchedule[0]  # worst case we'll wait a bit on high tide
     self.graph = pathfinding.Map(tick.map, min_tide)
-    # TODO: this doesn't take into account TSP optimization, just sticks to
-    # the given ports ordering.
-    # TODO: this isn't doing any pathing, it assumes we can freely go
-    # between ports, which won't be true sometimes (depending on tides) or
-    # ever (depending on map topology), need pathfinding.
-    cost = 1  # Start at 1 for cost of spawning
     navigable_ports = [port for port in tick.map.ports
                        if self.graph.navigable(port)]
+    self.unseen_ports = set(navigable_ports)
     if not navigable_ports:
       print("[emond] No port is navigable..? Something is off.")
-    print(f"[emond] skipping {len(tick.map.ports) - len(navigable_ports)} because they're unnavigable. Navigable: {navigable_ports}")
-    spawn_port = navigable_ports[0]
-    self.ports_plan = [spawn_port]
-    self.target_port = self.ports_plan[0]
+      return tick.map.ports[0]
+    return navigable_ports[0]
 
-    for port in navigable_ports[1:]:
-      # Do we have time to get there and back to the start?
-      cost_get_there = pathfinding.distance(self.graph, self.ports_plan[-1], port)
-      cost_get_back = pathfinding.distance(self.graph, port, self.ports_plan[0])
-      if cost_get_there is None or cost_get_back is None:
-        print(f"[emond] {port} is unreachable from {self.ports_plan[-1]}, skipping. cost_get_there={cost_get_there} cost_get_back={cost_get_back}")
-        continue  # Unreachable.
-      dock_costs = 2
-      additional_cost = cost_get_there + cost_get_back + dock_costs
-      if cost + additional_cost >= tick.totalTicks:
-        continue  # Can't afford it! Skip it.
-      self.ports_plan.append(port)
-      cost += additional_cost
+  def go_home(self, tick: Tick) -> None:
+      self.target_port = tick.spawnLocation
+      self.path = pathfinding.shortest_path(self.graph, tick.currentLocation,
+                                            tick.spawnLocation)
 
-    # Go back to the initial port!
-    self.ports_plan.append(self.ports_plan[0])
-    print("[emond] our plan is the following: ", self.ports_plan)
-    print("[emond] estimating a total cost of ", cost, " ticks, out of budget of ", tick.totalTicks)
+  def pick_next_port(self, tick: Tick) -> None:
+    # TODO: this doesn't take into account TSP optimization, just sticks to
+    # the given ports ordering.
+    # TODO: this assumes we can freely go between ports at the starting tide,
+    # which won't be true sometimes (depending on tide schedule)
+    if not self.unseen_ports:  # No more ports to see!
+      print("[emond] No more ports to see! Going home.")
+      self.go_home(tick)
+      return
+    path, cost = pathfinding.path_to_closest(self.graph, tick.currentLocation,
+                                             self.unseen_ports)
+    if not path:
+      print("[emond] No reachable ports from here. Going home")
+      self.go_home(tick)  # Can't reach any
+      return
 
-  def plan_next_port(self, pos: Position, plan_idx: int):
-    self.target_port = self.ports_plan[plan_idx]
-    self.path = pathfinding.shortest_path(self.graph, pos, self.target_port)
+    goal = path[-1]
+    cost_go_back = pathfinding.distance(self.graph, goal, tick.spawnLocation)
+    if cost_go_back is None:
+      print(f"[emond] Can't go home from {goal}... This is weird. Going home")
+      # Wouldn't be able to come back from this one
+      self.go_home(tick)
+      return
+
+    # +1s to account for docking
+    total_cost = cost + 1 + cost_go_back + 1
+    if tick.currentTick + total_cost > tick.totalTicks:
+      print(f"[emond] Closest new goal is {goal}, but would cost {cost} to "
+            f"get there, {cost_go_back} to go back, would bring us at tick "
+            f"{tick.currentTick + total_cost}/tick.totalTicks. No time.")
+      self.go_home(tick)
+      return
+
+    self.path = path
+    self.target_port = goal
         
   def get_next_move(self, tick: Tick) -> Action:
     """
@@ -89,11 +101,10 @@ class Bot:
     print(f"[emond] tide schedule: {tick.tideSchedule}")
     print(f"[emond] path: {self.path}")
 
-    # Skip the first tick -- no tide information then.
+    # Skip the first tick -- no tide information then. Skip this turn.
     if tick.currentTick == 0:
       # TODO: ideally don't do that..?
       return Anchor()  
-
 
     # Haven't spawned yet?
     if tick.currentLocation is None:
@@ -101,17 +112,18 @@ class Bot:
       print("[emond] --- START ---")
       print(tick)
       print("[emond] --- END ---")
-      self.make_plan(tick)
+      self.target_port = self.pick_spawn(tick)
       print(f"[emond] Spawing on {self.target_port}")
       return Spawn(self.target_port)
 
     # Reached our target port?
     if tick.currentLocation == self.target_port:
+      self.unseen_ports.discard(self.target_port)
       print(f"[emond] Reached port {self.target_port}, docking.")
-      plan_idx = len(tick.visitedPortIndices) + 1
-      print(f"[emond] Visited so far: {tick.visitedPortIndices}, plan_idx: {plan_idx}")
-      if plan_idx < len(self.ports_plan):
-        self.plan_next_port(tick.currentLocation, plan_idx)
+      print(f"[emond] Visited so far: {tick.visitedPortIndices}, {len(self.unseen_ports)} left that are reachable")
+      # Not our very first port in our journey
+      if not tick.visitedPortIndices or tick.currentLocation != tick.spawnLocation:
+        self.pick_next_port(tick)
         print(f"[emond] Next, going to: {self.target_port}, path: {self.path}")
       return Dock()
 
@@ -121,6 +133,6 @@ class Bot:
       self.path.pop(0)
 
     # Navigate towards our next path step.
-    direction = naviguate_towards(tick.currentLocation, self.path[0])
+    direction = direction_towards(tick.currentLocation, self.path[0])
     print(f"[emond] Sailing {direction}, to go from {tick.currentLocation} to {self.path[0]}")
     return Sail(direction)

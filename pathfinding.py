@@ -2,7 +2,7 @@
 # https://www.redblobgames.com/pathfinding/a-star/implementation.html#python-dijkstra
 
 import heapq
-from typing import Dict, List, Optional, Tuple, TypeVar
+from typing import Dict, List, Optional, Set, Tuple, TypeVar
 
 from game_message import Position, Map as GameMap
 
@@ -14,7 +14,8 @@ def chebyshev_dist(a: Position, b: Position) -> int:
   return max(abs(a.row - b.row), abs(a.column - b.column))
 
 
-heuristic = chebyshev_dist
+def heuristic(a: Position, goals: List[Position]) -> int:
+  return min(chebyshev_dist(a, goal) for goal in goals)
 
 
 class Map:
@@ -81,36 +82,45 @@ def reconstruct_path(came_from: Dict[Position, Position],
   return path
 
 
-def a_star_search(graph: Map, start: Position, goal: Position):
+def a_star_search(graph: Map, start: Position, goals: Set[Position]):
   frontier = PriorityQueue()
   frontier.put(start, 0)
   came_from: Dict[Position, Optional[Position]] = {}
   cost_so_far: Dict[Position, int] = {}
   came_from[start] = None
   cost_so_far[start] = 0
+  goal = None
   
   while not frontier.empty():
     current: Position = frontier.get()
     
-    if current == goal:
+    if current in goals:
+      goal = current
       break
     
     for next_ in graph.neighbors(current):
       new_cost = cost_so_far[current] + 1  # graph.cost(current, next_)
       if next_ not in cost_so_far or new_cost < cost_so_far[next_]:
         cost_so_far[next_] = new_cost
-        priority = new_cost + heuristic(next_, goal)
+        priority = new_cost + heuristic(next_, goals)
         frontier.put(next_, priority)
         came_from[next_] = current
   
-  return came_from, cost_so_far
+  return came_from, cost_so_far, goal
 
 
 def distance(graph: Map, src: Position, dst: Position) -> Optional[int]:
-  _, cost_so_far = a_star_search(graph, src, dst)
+  _, cost_so_far, _ = a_star_search(graph, src, set([dst]))
   return cost_so_far.get(dst)
 
 
 def shortest_path(graph: Map, src: Position, dst: Position) -> List[Position]:
-  came_from, _ = a_star_search(graph, src, dst)
+  came_from, _, _ = a_star_search(graph, src, set([dst]))
   return reconstruct_path(came_from, src, dst)
+
+
+def path_to_closest(
+    graph: Map, src: Position, goals: Set[Position]
+) -> Tuple[List[Position], Optional[int]]:
+  came_from, cost_so_far, goal = a_star_search(graph, src, goals)
+  return reconstruct_path(came_from, src, goal), cost_so_far.get(goal)
