@@ -42,7 +42,7 @@ pub struct Micro {
 }
 
 impl Micro {
-    pub fn get_move(&mut self, game_tick: GameTick) -> Action {
+    pub fn get_move(&mut self, game_tick: &GameTick) -> Action {
         if self.verbose {
             info!("State (before): {state:?}", state = self.state);
         }
@@ -55,14 +55,14 @@ impl Micro {
             State::Spawning { position } => {
                 let position = position.to_position();
                 action = Some(Action::Spawn { position: position });
-                State::Waiting
+                State::Docking
             },
             State::Docking => {
                 action = Some(Action::Dock);
                 State::Waiting
             },
             State::Following { path, path_index } => {
-                let current = Pos::from_position(game_tick.current_location.unwrap());
+                let current = Pos::from_position(&game_tick.current_location.unwrap());
                 assert!(!path.steps.is_empty(),
                         "Path should never end up empty!");
                 assert!(path_index < &path.steps.len(),
