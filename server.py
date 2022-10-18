@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
 import asyncio
-import websockets
 import json
+import sys
+import time
+import websockets
 
 from game_message import Action, Anchor, Dock, Position, Sail, Spawn, Tick, directions
 import seen_games
@@ -143,6 +145,8 @@ async def run():
 async def handler(websocket):
   game = None
   while not game or not game.tick.isOver:
+    if '--slow' in sys.argv:
+      time.sleep(1)
     try:
       message = await websocket.recv()
     except websockets.exceptions.ConnectionClosed:

@@ -96,7 +96,6 @@ def reconstruct_path(came_from: Dict[State, State],
 
 
 def a_star_search(graph: Map, start: Position, goals: Set[Position], tick: int):
-  # TODO: allow waiting action?
   frontier = PriorityQueue()
   start_state = State(pos=start, wait=0)
   frontier.put(start_state, 0)

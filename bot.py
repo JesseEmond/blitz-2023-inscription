@@ -54,8 +54,7 @@ class Bot:
           tick.currentTick)
 
   def pick_next_port(self, tick: Tick) -> None:
-    # TODO: this doesn't take into account TSP optimization, just sticks to
-    # the given ports ordering.
+    # TODO: more advanced TSP than greedy nearest neighbor with one spawn port
     if not self.unseen_ports:  # No more ports to see!
       print("[emond] No more ports to see! Going home.")
       self.go_home(tick)
@@ -81,7 +80,7 @@ class Bot:
     if tick.currentTick + total_cost > tick.totalTicks:
       print(f"[emond] Closest new goal is {goal}, but would cost {cost} to "
             f"get there, {cost_go_back} to go back, would bring us at tick "
-            f"{tick.currentTick + total_cost}/tick.totalTicks. No time.")
+            f"{tick.currentTick + total_cost}/{tick.totalTicks}. No time.")
       self.go_home(tick)
       return
 

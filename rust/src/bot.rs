@@ -4,7 +4,6 @@ use thiserror::Error;
 use crate::game_interface::{Action, GameTick};
 use crate::micro_ai::{Micro, State};
 use crate::macro_ai::{Macro};
-use crate::pathfinding::{Path, Pos};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -21,7 +20,7 @@ pub struct Bot {
 impl Default for Bot {
     fn default() -> Self {
         Bot {
-            ai_micro: Micro { state: State::Waiting, verbose: false },
+            ai_micro: Micro { state: State::Waiting, verbose: true },
             ai_macro: Macro::new(),
         }
     }
