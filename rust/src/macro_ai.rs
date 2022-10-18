@@ -28,6 +28,10 @@ impl Macro {
         self.pathfinder.graph.init_map(&game_tick.map);
         self.missing_ports = HashSet::from_iter(
             game_tick.map.ports.iter().map(Pos::from_position));
+
+        info!("--- TICK DUMP BEGIN ---");
+        info!("{game_tick:?}");
+        info!("--- TICK DUMP END ---");
     }
 
     // Called on tick 1, after tide schedule is available.
@@ -35,6 +39,9 @@ impl Macro {
         let schedule: Vec<u8> = game_tick.tide_schedule.iter().map(|&e| e as u8).collect();
         self.pathfinder.graph.init_tide_schedule(
             &schedule, game_tick.current_tick.into());
+        info!("--- TIDE DUMP BEGIN ---");
+        info!("{schedule:?}", schedule = game_tick.tide_schedule);
+        info!("--- TIDE DUMP END ---");
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {
@@ -101,6 +108,9 @@ impl Macro {
         // NOTE: +1s to account for docking
         let total_cost = closest.cost + 1 + cost_go_back + 1;
 
+        // TODO: change this to worth_visiting function that simulates next
+        // steps and checks if at any point we could end up with higher score
+        // than current score.
         if game_tick.current_tick + (total_cost as u16) > game_tick.total_ticks {
             info!(concat!("[MACRO] Closest new goal is {goal:?}, but would ",
                           "cost {cost} to get there, {cost_go_back} to go ",
