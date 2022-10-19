@@ -11,11 +11,6 @@ fn eval_score(visits: u32, ticks: u32, looped: bool) -> u32 {
     base * bonus
 }
 
-fn pick_spawn(game_tick: &GameTick) -> Pos {
-    // TODO: smarter spawn logic
-    Pos::from_position(game_tick.map.ports.first().expect("No ports...?"))
-}
-
 #[derive(Debug)]
 pub struct Simulation {
     current: Pos,
@@ -61,8 +56,14 @@ impl Macro {
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {
+        // TODO: remove this once the server bug is fixed and we get tide info
+        // on tick 0.
+        let spawn_ready = game_tick.current_tick > 0;
         if game_tick.spawn_location.is_none() {
-            let spawn = pick_spawn(game_tick);
+            if !spawn_ready {
+                return;
+            }
+            let spawn = self.pick_spawn(game_tick);
             info!("[MACRO] Will spawn on {spawn:?}");
             micro.state = State::Spawning { position: spawn };
         } else if game_tick.is_over {
@@ -113,6 +114,18 @@ impl Macro {
         if self.worth_visiting(&closest, game_tick) { Some(closest) } else { None }
     }
 
+    pub fn pick_spawn(&mut self, game_tick: &GameTick) -> Pos {
+        game_tick.map.ports.iter().map(Pos::from_position).max_by_key(
+            |spawn| self.spawn_score(game_tick, spawn)).expect("No ports...?")
+    }
+
+    pub fn spawn_score(&mut self, game_tick: &GameTick, spawn: &Pos) -> u32 {
+        let mut sim = Simulation::from_spawn(game_tick, spawn);
+        let score = sim.expected_final_score(&mut self.pathfinder);
+        info!("[MACRO] Spawn {spawn:?} score: {score}");
+        score
+    }
+
     pub fn worth_visiting(
         &mut self, target: &Path, game_tick: &GameTick
         ) -> bool {
@@ -154,9 +167,23 @@ impl Simulation {
         }
     }
 
+    pub fn from_spawn(game_tick: &GameTick, spawn: &Pos) -> Self {
+        let mut missing_ports = HashSet::from_iter(
+            game_tick.map.ports.iter().map(Pos::from_position));
+        missing_ports.remove(spawn);
+        Simulation {
+            current: *spawn,
+            home: *spawn,
+            tick: (game_tick.current_tick + 1) as u32,  // +1 to dock
+            max_tick: game_tick.total_ticks.into(),
+            ports_visited: 1,  // only home
+            missing_ports: missing_ports,
+        }
+    }
+
     pub fn done(&self) -> bool {
         let tick_end = self.tick >= self.max_tick;
-        let back_home = self.current == self.home && self.ports_visited > 0;
+        let back_home = self.current == self.home && self.ports_visited > 1;
         tick_end || back_home
     }
 
