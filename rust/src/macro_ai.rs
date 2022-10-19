@@ -5,9 +5,25 @@ use crate::game_interface::{GameTick};
 use crate::micro_ai::{Micro, State};
 use crate::pathfinding::{Path, Pathfinder, Pos};
 
+fn eval_score(visits: u32, ticks: u32, looped: bool) -> u32 {
+    let bonus = if looped { 2 } else { 1 };
+    let base = (visits as u32) * 125 - ticks * 3;
+    base * bonus
+}
+
 fn pick_spawn(game_tick: &GameTick) -> Pos {
     // TODO: smarter spawn logic
     Pos::from_position(game_tick.map.ports.first().expect("No ports...?"))
+}
+
+#[derive(Debug)]
+pub struct Simulation {
+    current: Pos,
+    home: Pos,
+    ports_visited: u32,
+    missing_ports: HashSet<Pos>,
+    tick: u32,
+    max_tick: u32,
 }
 
 pub struct Macro {
@@ -93,36 +109,29 @@ impl Macro {
                 return None;
             },
         };
-        let home = Pos::from_position(&game_tick.spawn_location.unwrap());
-        let cost_go_back = match self.pathfinder.distance(
-            &current, &home, tick) {
-            Some(cost) => cost,
-            None => {
-                panic!(concat!(
-                        "[MACRO] Could not find a way back home from target ",
-                        "{goal:?}, home: {home:?}. Should not happen."),
-                        goal = closest.goal, home = home);
-            },
-        };
 
-        // NOTE: +1s to account for docking
-        let total_cost = closest.cost + 1 + cost_go_back + 1;
+        if self.worth_visiting(&closest, game_tick) { Some(closest) } else { None }
+    }
 
-        // TODO: change this to worth_visiting function that simulates next
-        // steps and checks if at any point we could end up with higher score
-        // than current score.
-        if game_tick.current_tick + (total_cost as u16) > game_tick.total_ticks {
-            info!(concat!("[MACRO] Closest new goal is {goal:?}, but would ",
-                          "cost {cost} to get there, {cost_go_back} to go ",
-                          "back, would bring us at tick {tick}/{total}. ",
-                          "No time."),
-                  goal = closest.goal, cost = closest.cost,
-                  cost_go_back = cost_go_back, tick = game_tick.current_tick,
-                  total = game_tick.total_ticks);
-            None
-        } else {
-            Some(closest)
+    pub fn worth_visiting(
+        &mut self, target: &Path, game_tick: &GameTick
+        ) -> bool {
+        let mut sim = Simulation::new(game_tick, &self);
+        if sim.ports_visited == 1 {
+            // At least want 2 ports!
+            return true;
         }
+        let go_home_score = sim.score_if_go_home(&mut self.pathfinder);
+        sim.visit(target);
+        let final_score = sim.expected_final_score(&mut self.pathfinder);
+        let worth = final_score > go_home_score;
+        info!(concat!("[MACRO] {goal:?} is {worth_it} visiting. Expected ",
+                      "final score: {final_score} vs. going home ",
+                      "{go_home_score}"),
+              goal = target.goal, final_score = final_score,
+              go_home_score = go_home_score,
+              worth_it = if worth { "worth" } else { "not worth" });
+        worth
     }
 
     pub fn path_home(&mut self, game_tick: &GameTick) -> Option<Path> {
@@ -130,5 +139,78 @@ impl Macro {
         let home = Pos::from_position(&game_tick.spawn_location.unwrap());
         self.pathfinder.shortest_path(&current, &home,
                                       game_tick.current_tick.into())
+    }
+}
+
+impl Simulation {
+    pub fn new(game_tick: &GameTick, ai_macro: &Macro) -> Self {
+        Simulation {
+            current: Pos::from_position(&game_tick.current_location.unwrap()),
+            home: Pos::from_position(&game_tick.spawn_location.unwrap()),
+            tick: game_tick.current_tick.into(),
+            max_tick: game_tick.total_ticks.into(),
+            ports_visited: game_tick.visited_port_indices.len() as u32,
+            missing_ports: ai_macro.missing_ports.clone(),
+        }
+    }
+
+    pub fn done(&self) -> bool {
+        let tick_end = self.tick >= self.max_tick;
+        let back_home = self.current == self.home && self.ports_visited > 0;
+        tick_end || back_home
+    }
+
+    pub fn current_score(&self) -> u32 {
+        let ticks = u32::min(self.tick, self.max_tick);
+        // If our last visit ended after the end, it didn't count.
+        let last_visit_counts = self.tick < self.max_tick;
+        let looped = self.current == self.home && last_visit_counts;
+        let visits = if last_visit_counts { self.ports_visited } else { self.ports_visited - 1 };
+        eval_score(visits, ticks, looped)
+    }
+
+    pub fn visit(&mut self, target: &Path) {
+        assert!(!self.done(), "{self:?}");
+        // NOTE: +1 to account for docking.
+        self.tick += target.cost + 1;
+        self.current = target.goal;
+        self.ports_visited += 1;
+        self.missing_ports.remove(&target.goal);
+    }
+
+    pub fn unvisit(&mut self, target: &Path) {
+        // Inverted logic to 'visit'.
+        self.missing_ports.insert(target.goal);
+        self.ports_visited -= 1;
+        self.current = *target.steps.first().unwrap();
+        self.tick -= target.cost + 1;
+    }
+
+    pub fn score_if_go_home(&mut self, pathfinder: &mut Pathfinder) -> u32 {
+        let path_home = pathfinder.shortest_path(
+            &self.current, &self.home, self.tick).expect("No path home?");
+        self.visit(&path_home);
+        let score = self.current_score();
+        self.unvisit(&path_home);
+        score
+    }
+
+    pub fn expected_final_score(&mut self, pathfinder: &mut Pathfinder) -> u32 {
+        if self.done() {
+            return self.current_score();
+        } else if self.missing_ports.is_empty() {
+            return self.score_if_go_home(pathfinder);
+        }
+        let closest = match pathfinder.path_to_closest(
+            &self.current, &self.missing_ports, self.tick) {
+            Some(path) => path,
+            None => {
+                return self.score_if_go_home(pathfinder);
+            },
+        };
+        self.visit(&closest);
+        let final_score = self.expected_final_score(pathfinder);
+        self.unvisit(&closest);
+        u32::max(final_score, self.score_if_go_home(pathfinder))
     }
 }

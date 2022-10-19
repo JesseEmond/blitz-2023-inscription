@@ -12,7 +12,9 @@ import seen_games
 
 class Game:
   def __init__(self):
-    self.tick = seen_games.GAME2
+    # Hacky copy
+    tick = Tick.from_dict(json.loads(json.dumps(seen_games.GAME2.to_dict())))
+    self.tick = tick
     self.tick.currentTick = 0  # seen games come from logs at tick=1, reset.
     self.schedule = self.tick.tideSchedule
     self.tick.tideSchedule = [0]  # Start with no info on initial tick (like server)
