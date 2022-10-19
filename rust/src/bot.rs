@@ -1,3 +1,14 @@
+// TODOs
+// [x] A* that returns paths to all goals
+// [x] Precompute all edges (+all possible initial tide offsets)
+// [ ] Ant Colony Optimization for full cycles
+// [ ] Follow best seen ant path
+// [ ] Need to optimize to fit in 1 turn?
+// [ ] Clip ant paths based on going-home options at each stage
+// [ ] Mine X real old games from logs
+// [ ] Make server eval setup, give score distribution on X games
+// [ ] Make random hyperparam sweep
+// [ ] Integrate with vizier?
 use log::info;
 use thiserror::Error;
 

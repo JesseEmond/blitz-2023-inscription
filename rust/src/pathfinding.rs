@@ -26,7 +26,7 @@ fn chebyshev_distance(a: &Pos, b: &Pos) -> u32 {
              (a.y as i32 - b.y as i32).abs() as u32)
 }
 
-pub struct Graph {
+pub struct Grid {
     tide_schedule: Vec<u8>,
     start_tick: u32,
     // TODO: consider representing 2 items per u8?
@@ -35,9 +35,9 @@ pub struct Graph {
     height: usize,
 }
 
-impl Graph {
+impl Grid {
     pub fn new() -> Self {
-        Graph {
+        Grid {
             tide_schedule: Vec::new(),
             topology: Vec::new(),
             start_tick: 0,
@@ -118,7 +118,7 @@ fn heuristic(src: &Pos, targets: &Targets) -> u32 {
 }
 
 pub struct Pathfinder {
-    pub graph: Graph,
+    pub grid: Grid,
 
     came_from: CameFrom,
     cost_so_far: CostSoFar,
@@ -127,7 +127,7 @@ pub struct Pathfinder {
 impl Pathfinder {
     pub fn new() -> Self {
         Pathfinder {
-            graph: Graph::new(),
+            grid: Grid::new(),
             came_from: CameFrom::new(),
             cost_so_far: CostSoFar::new(),
         }
@@ -151,10 +151,14 @@ impl Pathfinder {
 
     // TODO: use Vec instead of hashset?
     fn a_star_search(
-        &mut self, start: &Pos, targets: &Targets, tick: u32
+        &mut self, start: &Pos, targets: &Targets, tick: u32,
+        stop_on_first: bool
         ) -> Option<Pos> {
         self.cost_so_far.clear();
         self.came_from.clear();
+
+        let mut targets = targets.clone();
+        let mut first_goal: Option<Pos> = None;
 
         // TODO: worth using a different data structure?
         // NOTE: Higher priority pops first.
@@ -170,40 +174,48 @@ impl Pathfinder {
             let current_tick = tick + cost;
 
             if targets.contains(&current.position) {
-                return Some(current.position);
+                targets.remove(&current.position);
+                first_goal = Some(current.position);
+                if stop_on_first {
+                    break;
+                }
+            }
+            if targets.is_empty() {
+                break;
             }
 
-            let neighbors = self.graph.neighbors(current.position, current_tick)
+            let neighbors = self.grid.neighbors(current.position, current_tick)
                 .map(|n| State { position: n, wait: 0 });
             let wait_here = iter::once(
                 State { position: current.position, wait: current.wait + 1 });
             // We must wait if we're stuck on ground
-            let forced_wait = !self.graph.navigable(&current.position,
+            let forced_wait = !self.grid.navigable(&current.position,
                                                     current_tick);
             // No point in waiting longer than a full tide cycle.
-            let consider_wait = (current.wait as usize) < self.graph.tide_schedule.len();
+            let consider_wait = (current.wait as usize) < self.grid.tide_schedule.len();
             let options = neighbors.filter(|_| !forced_wait)
                 .chain(wait_here.filter(|_| consider_wait || forced_wait));
 
             for next in options {
-                let new_cost = cost + 1;  // graph.cost(current, next)
+                let new_cost = cost + 1;  // grid.cost(current, next)
                 let old_cost = self.cost_so_far.get(&next).cloned();
                 if old_cost.is_none() || new_cost < old_cost.unwrap() {
                     self.cost_so_far.insert(next, new_cost);
-                    let priority = new_cost + heuristic(&next.position, targets);
+                    let priority = new_cost + heuristic(&next.position, &targets);
                     frontier.push(next, -(priority as i32));
                     self.came_from.insert(next, current);
                 }
             }
         }
-        None
+        first_goal
     }
 
     pub fn shortest_path(
         &mut self, start: &Pos, target: &Pos, tick: u32
         ) -> Option<Path> {
         let targets = Targets::from([*target]);
-        if let Some(goal) = self.a_star_search(start, &targets, tick) {
+        if let Some(goal) = self.a_star_search(
+            start, &targets, tick, /*stop_on_first=*/true) {
             self.reconstruct_path(start, &goal)
         } else {
             None
@@ -214,7 +226,8 @@ impl Pathfinder {
         &mut self, start: &Pos, target: &Pos, tick: u32
         ) -> Option<u32> {
         let targets = Targets::from([*target]);
-        if let Some(goal) = self.a_star_search(start, &targets, tick) {
+        if let Some(goal) = self.a_star_search(
+            start, &targets, tick, /*stop_on_first=*/true) {
             let state = State { position: goal, wait: 0 };
             let cost = *self.cost_so_far.get(&state)
                 .expect("Found goal, but no cost set?");
@@ -227,10 +240,44 @@ impl Pathfinder {
     pub fn path_to_closest(
         &mut self, start: &Pos, targets: &Targets, tick: u32
         ) -> Option<Path> {
-        if let Some(goal) = self.a_star_search(start, targets, tick) {
+        if let Some(goal) = self.a_star_search(
+            start, targets, tick, /*stop_on_first=*/true) {
             self.reconstruct_path(start, &goal)
         } else {
             None
         }
+    }
+
+    pub fn paths_to_all_targets(
+        &mut self, start: &Pos, targets: &Targets, tick: u32
+        ) -> HashMap<Pos, Path> {
+        let mut out = HashMap::new();
+        self.a_star_search(start, targets, tick, /*stop_on_first=*/false);
+        for target in targets {
+            if let Some(path) = self.reconstruct_path(start, target) {
+                out.insert(*target, path);
+            }
+        }
+        out
+    }
+
+    // For each goal, gives a list of paths to the other targets: one for each
+    // possible tick offset we start at.
+    pub fn paths_to_all_targets_by_offset(
+        &mut self, start: &Pos, targets: &Targets, tick: u32
+        ) -> HashMap<Pos, Vec<Path>> {
+        let mut out = HashMap::new();
+        for offset in 0..self.grid.tide_schedule.len() {
+            let tick = tick + (offset as u32);
+            let all_paths = self.paths_to_all_targets(start, targets, tick);
+            for (target, path) in &all_paths {
+                assert!(out.contains_key(target) || offset == 0);
+                out.entry(*target)
+                    .and_modify(|paths: &mut Vec<Path>| paths.push(path.clone()))
+                    .or_insert(vec![path.clone()]);
+            }
+        }
+        assert!(out.values().all(|v| v.len() == self.grid.tide_schedule.len()));
+        out
     }
 }

@@ -36,7 +36,7 @@ impl Macro {
         // TODO: on tick 0, could precompute path pairs assuming
         // max tide, then on tick 1 only recompute the ones that
         // won't work with tide schedule?
-        self.pathfinder.graph.init_map(&game_tick.map);
+        self.pathfinder.grid.init_map(&game_tick.map);
         self.missing_ports = HashSet::from_iter(
             game_tick.map.ports.iter().map(Pos::from_position));
 
@@ -48,11 +48,30 @@ impl Macro {
     // Called on tick 1, after tide schedule is available.
     pub fn init_with_tide_info(&mut self, game_tick: &GameTick) {
         let schedule: Vec<u8> = game_tick.tide_schedule.iter().map(|&e| e as u8).collect();
-        self.pathfinder.graph.init_tide_schedule(
+        self.pathfinder.grid.init_tide_schedule(
             &schedule, game_tick.current_tick.into());
         info!("--- TIDE DUMP BEGIN ---");
         info!("{schedule:?}", schedule = game_tick.tide_schedule);
         info!("--- TIDE DUMP END ---");
+
+        let tick = game_tick.current_tick as u32;
+        let all_ports: Vec<Pos> = game_tick.map.ports.iter().map(
+            Pos::from_position).collect();
+        for port in &all_ports {
+            let mut targets = HashSet::from_iter(all_ports.iter().cloned());
+            targets.remove(&port);
+            info!("Pathfinding from port {port:?}");
+            let all_offsets_paths = self.pathfinder.paths_to_all_targets_by_offset(
+                port, &targets, tick);
+            info!(concat!("Computed {num_paths} groups of paths ({size} ",
+                          "options each). Here they are:"),
+                  num_paths = all_offsets_paths.len(),
+                  size = game_tick.tide_schedule.len());
+            for (target, offset_paths) in all_offsets_paths {
+                let costs: Vec<u32> = offset_paths.iter().map(|path| path.cost).collect();
+                info!("  to {target:?}, costs {costs:?}");
+            }
+        }
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {
