@@ -2,6 +2,7 @@ use log::{info};
 use std::collections::HashSet;
 
 use crate::game_interface::{GameTick};
+use crate::graph::{Graph};
 use crate::micro_ai::{Micro, State};
 use crate::pathfinding::{Path, Pathfinder, Pos};
 
@@ -24,11 +25,16 @@ pub struct Simulation {
 pub struct Macro {
     pathfinder: Pathfinder,
     missing_ports: HashSet<Pos>,
+    graph: Graph,
 }
 
 impl Macro {
     pub fn new() -> Self {
-        Macro { pathfinder: Pathfinder::new(), missing_ports: HashSet::new() }
+        Macro {
+            pathfinder: Pathfinder::new(),
+            missing_ports: HashSet::new(),
+            graph: Graph::new(),
+        }
     }
 
     // Called on tick 0, before tide schedule is available
@@ -54,24 +60,7 @@ impl Macro {
         info!("{schedule:?}", schedule = game_tick.tide_schedule);
         info!("--- TIDE DUMP END ---");
 
-        let tick = game_tick.current_tick as u32;
-        let all_ports: Vec<Pos> = game_tick.map.ports.iter().map(
-            Pos::from_position).collect();
-        for port in &all_ports {
-            let mut targets = HashSet::from_iter(all_ports.iter().cloned());
-            targets.remove(&port);
-            info!("Pathfinding from port {port:?}");
-            let all_offsets_paths = self.pathfinder.paths_to_all_targets_by_offset(
-                port, &targets, tick);
-            info!(concat!("Computed {num_paths} groups of paths ({size} ",
-                          "options each). Here they are:"),
-                  num_paths = all_offsets_paths.len(),
-                  size = game_tick.tide_schedule.len());
-            for (target, offset_paths) in all_offsets_paths {
-                let costs: Vec<u32> = offset_paths.iter().map(|path| path.cost).collect();
-                info!("  to {target:?}, costs {costs:?}");
-            }
-        }
+        self.graph.init(&mut self.pathfinder, game_tick);
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {

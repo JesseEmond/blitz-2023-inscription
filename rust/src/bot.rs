@@ -1,6 +1,7 @@
 // TODOs
 // [x] A* that returns paths to all goals
 // [x] Precompute all edges (+all possible initial tide offsets)
+// [x] Graph representation
 // [ ] Ant Colony Optimization for full cycles
 // [ ] Follow best seen ant path
 // [ ] Need to optimize to fit in 1 turn?
