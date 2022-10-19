@@ -177,9 +177,13 @@ impl Pathfinder {
                 .map(|n| State { position: n, wait: 0 });
             let wait_here = iter::once(
                 State { position: current.position, wait: current.wait + 1 });
+            // We must wait if we're stuck on ground
+            let forced_wait = !self.graph.navigable(&current.position,
+                                                    current_tick);
             // No point in waiting longer than a full tide cycle.
-            let can_wait = (current.wait as usize) < self.graph.tide_schedule.len();
-            let options = neighbors.chain(wait_here.filter(|_| can_wait));
+            let consider_wait = (current.wait as usize) < self.graph.tide_schedule.len();
+            let options = neighbors.filter(|_| !forced_wait)
+                .chain(wait_here.filter(|_| consider_wait || forced_wait));
 
             for next in options {
                 let new_cost = cost + 1;  // graph.cost(current, next)

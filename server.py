@@ -12,7 +12,7 @@ import seen_games
 
 class Game:
   def __init__(self):
-    self.tick = seen_games.GAME1
+    self.tick = seen_games.GAME2
     self.tick.currentTick = 0  # seen games come from logs at tick=1, reset.
     self.schedule = self.tick.tideSchedule
     self.tick.tideSchedule = [0]  # Start with no info on initial tick (like server)
@@ -84,8 +84,11 @@ class Game:
       drow = 1
     pos = Position(row=self.tick.currentLocation.row + drow,
                    column=self.tick.currentLocation.column + dcol)
+    if not self.is_navigable(self.tick.currentLocation):
+      print("[ERROR] Can't sail while on ground!")
+      return
     if not self.is_navigable(pos):
-      print("[ERROR] Can't sail on ground!")
+      print("[ERROR] Can't sail to ground!")
       return
     self.tick.currentLocation = pos
 
@@ -143,9 +146,11 @@ async def run():
 
 
 async def handler(websocket):
+  slow = '--slow' in sys.argv
+  fast = '--fast' in sys.argv
   game = None
   while not game or not game.tick.isOver:
-    if '--slow' in sys.argv:
+    if slow:
       time.sleep(1)
     try:
       message = await websocket.recv()
@@ -156,7 +161,7 @@ async def handler(websocket):
     if data.get('type') == 'REGISTER':
       print("Started new game.")
       game = Game()
-      game.show()
+      if not fast: game.show()
       await websocket.send(json.dumps(game.tick.to_dict()))
     elif data.get('type') == 'COMMAND':
       if not game:
@@ -183,9 +188,9 @@ async def handler(websocket):
         action = Dock()
       else:
         print('Unknown action kind: ', kind, data_action)
-      print(f"Action: {action}")
+      if not fast: print(f"Action: {action}")
       game.apply(action)
-      game.show()
+      if not fast: game.show()
       if game.tick.isOver:
         print(f"Game is done! Score: {game.score()}")
       await websocket.send(json.dumps(game.tick.to_dict()))
