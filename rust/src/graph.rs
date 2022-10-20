@@ -82,7 +82,7 @@ impl Graph {
         Graph {
             vertices: vertices,
             edges: edges,
-            start_tick: tick,
+            start_tick: tick + 1,  // time to spawn
             max_ticks: game_tick.total_ticks as u32,
         }
     }

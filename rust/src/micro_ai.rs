@@ -84,7 +84,7 @@ impl Micro {
                     panic!(concat!(
                             "[!!!] Did not make the expected move to ",
                             "{expected:?} (current: {current:?}, ",
-                            "path_idx: {path_index}). Trying again."),
+                            "path_idx: {path_index})."),
                             expected = expected, current = current,
                             path_index = path_index);
                 } else {

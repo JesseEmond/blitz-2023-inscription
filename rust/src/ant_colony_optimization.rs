@@ -138,7 +138,13 @@ impl Ant {
         let current = self.current_vertex(graph);
         let looped = current == self.start;
         let visits = self.edges.len() + 1;  // +1 for spawn
-        let tick = if simulate_to_end && !looped { graph.max_ticks } else { self.tick };
+        let tick = if simulate_to_end && !looped {
+            graph.max_ticks
+        } else if looped {
+            self.tick - 1  // last docking home tick doesn't count
+        } else {
+            self.tick
+        };
         eval_score(visits as u32, tick, looped)
     }
 
@@ -151,7 +157,7 @@ impl Ant {
         let edge_go_home = graph.vertex_edge_to(vertex, self.start)
             .expect("No path home..?");
         let cost_go_home = graph.edge(edge_go_home).path(tick).cost;
-        tick += cost_go_home + 1; // +1 to dock it
+        tick += cost_go_home; // no +1, last home docking doesn't count.
         if tick < graph.max_ticks {
             let visits = num_edges + 2;  // +1 for spawn, +1 for last
             Some(eval_score(visits as u32, tick, /*looped=*/true))

@@ -5,7 +5,7 @@
 // [x] Ant Colony Optimization for full cycles
 // [x] Clip ant paths based on going-home options at each stage
 // [x] Fix expectation of first tick having no schedule, update local seen games
-// [ ] Follow best seen ant path
+// [x] Follow best seen ant path
 // [ ] Snapshot graph & pheromone info per step
 // [ ] Visualize graph & pheromones -- looks correct?
 // [ ] Manually hyperparam tune & get improved score online
