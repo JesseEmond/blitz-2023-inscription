@@ -13,18 +13,12 @@ import seen_games
 class Game:
   def __init__(self):
     # Hacky copy
-    tick = Tick.from_dict(json.loads(json.dumps(seen_games.GAME2.to_dict())))
+    tick = Tick.from_dict(json.loads(json.dumps(seen_games.GAME1.to_dict())))
     self.tick = tick
-    self.tick.currentTick = 0  # seen games come from logs at tick=1, reset.
-    self.schedule = self.tick.tideSchedule
-    self.tick.tideSchedule = [0]  # Start with no info on initial tick (like server)
     self.nrows = len(self.tick.map.topology)
     self.ncols = len(self.tick.map.topology[0])
 
   def apply(self, action: Action) -> None:
-    if self.tick.currentTick == 0:
-      self.tick.tideSchedule = self.schedule
-
     if action.kind == 'spawn':
       self.spawn(action.position)
     elif action.kind == 'anchor':
@@ -36,8 +30,9 @@ class Game:
     else:
       raise NotImplementedError(action.kind)
 
-    self.tick.currentTick += 1
-    self.tick.tideSchedule.append(self.tick.tideSchedule.pop(0))
+    if not self.tick.isOver:
+      self.tick.currentTick += 1
+      self.tick.tideSchedule.append(self.tick.tideSchedule.pop(0))
     if self.tick.currentTick >= self.tick.totalTicks:
       self.tick.isOver = True
 
@@ -102,8 +97,10 @@ class Game:
 
   def score(self) -> int:
     visits = self.tick.visitedPortIndices
-    bonus = 1 if not visits or visits[0] != visits[-1] else 2
-    base_score = (len(visits) * 125) - (self.tick.currentTick * 3)
+    back_home = visits and visits[0] == visits[-1]
+    bonus = 2 if back_home else 1
+    num_visits = len(visits) - 1 if back_home else len(visits)
+    base_score = (num_visits * 125) - (self.tick.currentTick * 3)
     return base_score * bonus
 
   def is_navigable(self, pos: Position) -> bool:

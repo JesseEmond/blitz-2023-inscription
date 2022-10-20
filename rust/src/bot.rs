@@ -4,8 +4,11 @@
 // [x] Graph representation
 // [x] Ant Colony Optimization for full cycles
 // [x] Clip ant paths based on going-home options at each stage
-// [ ] Follow best seen ant path
 // [ ] Fix expectation of first tick having no schedule, update local seen games
+// [ ] Follow best seen ant path
+// [ ] Snapshot graph & pheromone info per step
+// [ ] Visualize graph & pheromones -- looks correct?
+// [ ] Manually hyperparam tune & get improved score online
 // [ ] Need to optimize to fit in 1 turn?
 // [ ] Mine X real old games from logs
 // [ ] Make server eval setup, give score distribution on X games
