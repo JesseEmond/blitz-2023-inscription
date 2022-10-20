@@ -2,10 +2,11 @@
 // [x] A* that returns paths to all goals
 // [x] Precompute all edges (+all possible initial tide offsets)
 // [x] Graph representation
-// [ ] Ant Colony Optimization for full cycles
+// [x] Ant Colony Optimization for full cycles
+// [x] Clip ant paths based on going-home options at each stage
 // [ ] Follow best seen ant path
+// [ ] Fix expectation of first tick having no schedule, update local seen games
 // [ ] Need to optimize to fit in 1 turn?
-// [ ] Clip ant paths based on going-home options at each stage
 // [ ] Mine X real old games from logs
 // [ ] Make server eval setup, give score distribution on X games
 // [ ] Make random hyperparam sweep

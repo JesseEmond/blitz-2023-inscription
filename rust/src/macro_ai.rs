@@ -1,16 +1,11 @@
 use log::{info};
 use std::collections::HashSet;
 
-use crate::game_interface::{GameTick};
+use crate::ant_colony_optimization::{Colony, HyperParams};
+use crate::game_interface::{GameTick, eval_score};
 use crate::graph::{Graph};
 use crate::micro_ai::{Micro, State};
 use crate::pathfinding::{Path, Pathfinder, Pos};
-
-fn eval_score(visits: u32, ticks: u32, looped: bool) -> u32 {
-    let bonus = if looped { 2 } else { 1 };
-    let base = (visits as u32) * 125 - ticks * 3;
-    base * bonus
-}
 
 #[derive(Debug)]
 pub struct Simulation {
@@ -25,7 +20,6 @@ pub struct Simulation {
 pub struct Macro {
     pathfinder: Pathfinder,
     missing_ports: HashSet<Pos>,
-    graph: Graph,
 }
 
 impl Macro {
@@ -33,7 +27,6 @@ impl Macro {
         Macro {
             pathfinder: Pathfinder::new(),
             missing_ports: HashSet::new(),
-            graph: Graph::new(),
         }
     }
 
@@ -60,7 +53,15 @@ impl Macro {
         info!("{schedule:?}", schedule = game_tick.tide_schedule);
         info!("--- TIDE DUMP END ---");
 
-        self.graph.init(&mut self.pathfinder, game_tick);
+        let graph = Graph::new(&mut self.pathfinder, game_tick);
+        let mut hyperparams = HyperParams::default_params(/*iterations=*/1000);
+        hyperparams.ants = 100;
+        hyperparams.pheromone_trail_power = 0.0;
+        hyperparams.heuristic_power = 5.0;
+        let mut colony = Colony::new(graph, hyperparams, /*seed=*/42);
+        let solution = colony.run();
+        info!("Solution found has a score of {score}", score = solution.score);
+        // TODO: keep solution and follow it
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {
@@ -127,7 +128,7 @@ impl Macro {
             |spawn| self.spawn_score(game_tick, spawn)).expect("No ports...?")
     }
 
-    pub fn spawn_score(&mut self, game_tick: &GameTick, spawn: &Pos) -> u32 {
+    pub fn spawn_score(&mut self, game_tick: &GameTick, spawn: &Pos) -> i32 {
         let mut sim = Simulation::from_spawn(game_tick, spawn);
         let score = sim.expected_final_score(&mut self.pathfinder);
         info!("[MACRO] Spawn {spawn:?} score: {score}");
@@ -195,7 +196,7 @@ impl Simulation {
         tick_end || back_home
     }
 
-    pub fn current_score(&self) -> u32 {
+    pub fn current_score(&self) -> i32 {
         let ticks = u32::min(self.tick, self.max_tick);
         // If our last visit ended after the end, it didn't count.
         let last_visit_counts = self.tick < self.max_tick;
@@ -221,7 +222,7 @@ impl Simulation {
         self.tick -= target.cost + 1;
     }
 
-    pub fn score_if_go_home(&mut self, pathfinder: &mut Pathfinder) -> u32 {
+    pub fn score_if_go_home(&mut self, pathfinder: &mut Pathfinder) -> i32 {
         let path_home = pathfinder.shortest_path(
             &self.current, &self.home, self.tick).expect("No path home?");
         self.visit(&path_home);
@@ -230,7 +231,7 @@ impl Simulation {
         score
     }
 
-    pub fn expected_final_score(&mut self, pathfinder: &mut Pathfinder) -> u32 {
+    pub fn expected_final_score(&mut self, pathfinder: &mut Pathfinder) -> i32 {
         if self.done() {
             return self.current_score();
         } else if self.missing_ports.is_empty() {
@@ -246,6 +247,6 @@ impl Simulation {
         self.visit(&closest);
         let final_score = self.expected_final_score(pathfinder);
         self.unvisit(&closest);
-        u32::max(final_score, self.score_if_go_home(pathfinder))
+        i32::max(final_score, self.score_if_go_home(pathfinder))
     }
 }

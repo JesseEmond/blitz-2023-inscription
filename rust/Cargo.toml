@@ -21,3 +21,4 @@ env_logger = "0.9"
 log = "*"
 priority-queue = "1.2.3"
 thiserror  = "1.0"
+rand = { version = "0.8.5", features = [ "small_rng" ] }

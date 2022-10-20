@@ -1,3 +1,4 @@
+pub mod ant_colony_optimization;
 pub mod bot;
 pub mod client;
 pub mod game_interface;
