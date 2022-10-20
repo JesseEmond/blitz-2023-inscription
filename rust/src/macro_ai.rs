@@ -30,28 +30,16 @@ impl Macro {
         }
     }
 
-    // Called on tick 0, before tide schedule is available
-    pub fn init_no_tide_info(&mut self, game_tick: &GameTick) {
-        // TODO: on tick 0, could precompute path pairs assuming
-        // max tide, then on tick 1 only recompute the ones that
-        // won't work with tide schedule?
-        self.pathfinder.grid.init_map(&game_tick.map);
+    pub fn init(&mut self, game_tick: &GameTick) {
+        let schedule: Vec<u8> = game_tick.tide_schedule.iter().map(|&e| e as u8).collect();
+        self.pathfinder.grid.init(&game_tick.map, &schedule,
+                                  game_tick.current_tick.into());
         self.missing_ports = HashSet::from_iter(
             game_tick.map.ports.iter().map(Pos::from_position));
 
         info!("--- TICK DUMP BEGIN ---");
         info!("{game_tick:?}");
         info!("--- TICK DUMP END ---");
-    }
-
-    // Called on tick 1, after tide schedule is available.
-    pub fn init_with_tide_info(&mut self, game_tick: &GameTick) {
-        let schedule: Vec<u8> = game_tick.tide_schedule.iter().map(|&e| e as u8).collect();
-        self.pathfinder.grid.init_tide_schedule(
-            &schedule, game_tick.current_tick.into());
-        info!("--- TIDE DUMP BEGIN ---");
-        info!("{schedule:?}", schedule = game_tick.tide_schedule);
-        info!("--- TIDE DUMP END ---");
 
         let graph = Graph::new(&mut self.pathfinder, game_tick);
         let mut hyperparams = HyperParams::default_params(/*iterations=*/1000);
@@ -61,17 +49,10 @@ impl Macro {
         let mut colony = Colony::new(graph, hyperparams, /*seed=*/42);
         let solution = colony.run();
         info!("Solution found has a score of {score}", score = solution.score);
-        // TODO: keep solution and follow it
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {
-        // TODO: remove this once the server bug is fixed and we get tide info
-        // on tick 0.
-        let spawn_ready = game_tick.current_tick > 0;
         if game_tick.spawn_location.is_none() {
-            if !spawn_ready {
-                return;
-            }
             let spawn = self.pick_spawn(game_tick);
             info!("[MACRO] Will spawn on {spawn:?}");
             micro.state = State::Spawning { position: spawn };
@@ -197,10 +178,10 @@ impl Simulation {
     }
 
     pub fn current_score(&self) -> i32 {
-        let ticks = u32::min(self.tick, self.max_tick);
         // If our last visit ended after the end, it didn't count.
         let last_visit_counts = self.tick < self.max_tick;
         let looped = self.current == self.home && last_visit_counts;
+        let ticks = if looped { self.tick - 1 } else { self.tick };
         let visits = if last_visit_counts { self.ports_visited } else { self.ports_visited - 1 };
         eval_score(visits, ticks, looped)
     }

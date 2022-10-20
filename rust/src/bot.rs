@@ -4,7 +4,7 @@
 // [x] Graph representation
 // [x] Ant Colony Optimization for full cycles
 // [x] Clip ant paths based on going-home options at each stage
-// [ ] Fix expectation of first tick having no schedule, update local seen games
+// [x] Fix expectation of first tick having no schedule, update local seen games
 // [ ] Follow best seen ant path
 // [ ] Snapshot graph & pheromone info per step
 // [ ] Visualize graph & pheromones -- looks correct?
@@ -62,9 +62,7 @@ impl Bot {
               pos = game_tick.current_location);
 
         if game_tick.current_tick == 0 {
-            self.ai_macro.init_no_tide_info(&game_tick);
-        } else if game_tick.current_tick == 1 {
-            self.ai_macro.init_with_tide_info(&game_tick);
+            self.ai_macro.init(&game_tick);
         }
 
         self.ai_macro.assign_state(&mut self.ai_micro, &game_tick);

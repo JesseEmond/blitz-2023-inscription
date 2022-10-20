@@ -46,15 +46,12 @@ impl Grid {
         }
     }
 
-    pub fn init_map(&mut self, map: &Map) {
+    pub fn init(&mut self, map: &Map, schedule: &Vec<u8>, tick: u32) {
         let topology = &map.topology.0;
         self.topology = topology.iter().map(
             |row| row.iter().map(|&e| e as u8).collect()).collect();
         self.height = topology.len();
         self.width = topology[0].len();
-    }
-
-    pub fn init_tide_schedule(&mut self, schedule: &Vec<u8>, tick: u32) {
         self.tide_schedule = schedule.clone();
         self.start_tick = tick;
     }
