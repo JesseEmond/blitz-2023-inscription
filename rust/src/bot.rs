@@ -4,7 +4,7 @@
 // [x] Manually hyperparam tune & get improved score
 // [x] Mine X real old games from logs
 // [x] Make eval setup, give score distribution on X games
-// [ ] Load hyperparams from file
+// [x] Load hyperparams from file
 // [ ] Integrate with vizier
 // [ ] Need to speed up to fit in 1 turn?
 use log::info;

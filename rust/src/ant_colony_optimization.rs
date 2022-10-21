@@ -1,4 +1,5 @@
 use log::{debug, info};
+use serde::{Deserialize};
 use std::cmp::Ordering;
 use std::iter;
 use rand::{Rng, SeedableRng};
@@ -25,6 +26,7 @@ use crate::pathfinding::{Path, Pos};
 // - Update both directions of edge?
 // - Update only trails for specific tick offset?
 
+#[derive(Deserialize, Debug)]
 pub struct HyperParams {
     // Number of rounds of ant simulations to do.
     pub iterations: usize,

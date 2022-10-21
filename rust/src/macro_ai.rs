@@ -1,4 +1,6 @@
 use log::{debug, info};
+use serde_json::{Value};
+use std::fs;
 
 use crate::ant_colony_optimization::{Colony, HyperParams, Solution};
 use crate::game_interface::{GameTick};
@@ -36,6 +38,14 @@ impl Macro {
         hyperparams.ants = 100;
         hyperparams.pheromone_trail_power = 1.0;
         hyperparams.heuristic_power = 3.0;
+        if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
+            info!("[MACRO] Loading hyperparams from hyperparams.json.");
+            let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
+            hyperparams = serde_json::from_value(parsed).expect("invalid hyperparams");
+        } else {
+            info!("[MACRO] Using default params.");
+        }
+        info!("[MACRO] Hyperparams: {hyperparams:?}");
         let mut colony = Colony::new(graph, hyperparams, /*seed=*/42);
         self.solution = Some(colony.run());
         self.solution_idx = 0;

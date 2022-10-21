@@ -142,7 +142,7 @@ class Game:
     print(out)
 
 
-def show_scores(scores: List[int]):
+def show_stats(scores: List[int]):
   print(f'All scores: {list(sorted(scores))}')
   print(f'Min: {min(scores)}')
   print(f'Max: {max(scores)}')
@@ -250,6 +250,7 @@ async def handler(websocket):
           game_scores.append(score)
           if game_index == len(all_games):
             show_stats(game_scores)
+            await websocket.close()
             exit(0)
           reset_game = True
       await websocket.send(json.dumps(game.tick.to_dict()))
