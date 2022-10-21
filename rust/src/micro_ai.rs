@@ -1,4 +1,4 @@
-use log::{info};
+use log::{debug};
 
 use crate::pathfinding::{Path, Pos};
 use crate::game_interface::{Action, Direction, GameTick};
@@ -49,15 +49,12 @@ fn state_short(state: &State) -> String {
 // Micro-management of our boat.
 pub struct Micro {
     pub state: State,
-    pub verbose: bool,
 }
 
 impl Micro {
     pub fn get_move(&mut self, game_tick: &GameTick) -> Action {
-        if self.verbose {
-            info!("State (before): {state:?}",
-                  state = state_short(&self.state));
-        }
+        debug!("State (before): {state:?}",
+              state = state_short(&self.state));
         let action: Option<Action>;
         self.state = match &self.state {
             State::Waiting => {
@@ -100,10 +97,8 @@ impl Micro {
                 }
             },
         };
-        if self.verbose {
-            info!("State (after): {state:?}, action: {action:?}",
-                  state = state_short(&self.state));
-        }
+        debug!("State (after): {state:?}, action: {action:?}",
+              state = state_short(&self.state));
         action.expect("Action should have been set.")
     }
 }

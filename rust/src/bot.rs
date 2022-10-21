@@ -2,11 +2,11 @@
 // [x] Snapshot graph & pheromone info per step
 // [x] Visualize graph & pheromones -- looks correct?
 // [x] Manually hyperparam tune & get improved score
+// [x] Mine X real old games from logs
+// [x] Make eval setup, give score distribution on X games
+// [ ] Load hyperparams from file
+// [ ] Integrate with vizier
 // [ ] Need to speed up to fit in 1 turn?
-// [ ] Mine X real old games from logs
-// [ ] Make eval setup, give score distribution on X games
-// [ ] Make random hyperparam sweep
-// [ ] Integrate with vizier?
 use log::info;
 use thiserror::Error;
 
@@ -29,7 +29,7 @@ pub struct Bot {
 impl Default for Bot {
     fn default() -> Self {
         Bot {
-            ai_micro: Micro { state: State::Waiting, verbose: true },
+            ai_micro: Micro { state: State::Waiting },
             ai_macro: Macro::new(),
         }
     }
@@ -48,7 +48,7 @@ impl Bot {
     /// Make the next move according to current game tick
     ///
     /// This is where the magic happens, it's random but I bet you can do better ;)
-    pub fn get_next_move(&mut self, game_tick: GameTick) -> Result<Action, Error> {
+    pub fn get_next_move(&mut self, game_tick: &GameTick) -> Result<Action, Error> {
         info!("Tick {current}/{total}, pos: {pos:?}",
               current = game_tick.current_tick,
               total = game_tick.total_ticks,
@@ -60,5 +60,9 @@ impl Bot {
 
         self.ai_macro.assign_state(&mut self.ai_micro, &game_tick);
         Ok(self.ai_micro.get_move(&game_tick))
+    }
+
+    pub fn is_done(&self, game_tick: &GameTick) -> bool {
+        game_tick.is_over
     }
 }

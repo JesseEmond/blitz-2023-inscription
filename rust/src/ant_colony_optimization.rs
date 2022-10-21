@@ -1,4 +1,4 @@
-use log::{info};
+use log::{debug, info};
 use std::cmp::Ordering;
 use std::iter;
 use rand::{Rng, SeedableRng};
@@ -75,7 +75,7 @@ pub struct Colony {
     // One trail for each edge.
     pub edge_trails: Vec<Trail>,
     pub global_best: Option<Ant>,
-    pub rng: SmallRng
+    pub rng: SmallRng,
 }
 
 pub struct Solution {
@@ -239,8 +239,8 @@ impl Trail {
 
 impl Colony {
     pub fn new(graph: Graph, hyperparams: HyperParams, seed: u64) -> Self {
-        // TODO: change min if doing MMAS
-        let edge_trails = vec![Trail::new(0.0); graph.edges.len()];
+        let edge_trails = vec![Trail::new(hyperparams.base_pheromones);
+                               graph.edges.len()];
         Colony {
             graph: graph,
             edge_trails: edge_trails,
@@ -251,13 +251,13 @@ impl Colony {
     }
 
     pub fn run(&mut self) -> Solution {
-        log_graph(&self.graph);
-        log_heuristics(&self.graph);
+        debug_log_graph(&self.graph);
+        debug_log_heuristics(&self.graph);
         for iter in 0..self.hyperparams.iterations {
             info!("ACO iteration #{iter}/{total}", iter = iter + 1,
                    total = self.hyperparams.iterations);
-            log_pheromones(&self, iter);
-            log_scores(&self, iter);
+            debug_log_pheromones(&self, iter);
+            debug_log_scores(&self, iter);
             self.run_iteration();
             let best_ant = self.global_best.as_ref().expect("No solution found...?");
             info!("  best global score: {best}", best = best_ant.score);
@@ -275,15 +275,17 @@ impl Colony {
     fn construct_solutions(&mut self) -> Vec<Ant> {
         let ants: Vec<Ant> = iter::repeat(()).take(self.hyperparams.ants)
             .map(|_| self.construct_solution()).collect();
-        for (i, ant) in ants.iter().enumerate() { log_ant(ant, format!("[LOGGING_ANT]{i} ").as_str()); }
         let local_best = ants.iter().max_by_key(|ant| ant.score).cloned().unwrap();
         info!("  local best score: {score}", score = local_best.score);
-        log_ant(&local_best, "[LOGGING_LOCAL_BEST_ANT]");
+        debug_log_ant(&local_best, "[LOGGING_LOCAL_BEST_ANT]");
+        for (i, ant) in ants.iter().enumerate() {
+            debug_log_ant(ant, format!("[LOGGING_ANT]{i} ").as_str());
+        }
         if self.global_best.is_none()
             || local_best.score > self.global_best.as_ref().unwrap().score {
             self.global_best = Some(local_best);
         }
-        log_ant(&self.global_best.as_ref().unwrap(), "[LOGGING_GLOBAL_BEST_ANT]");
+        debug_log_ant(&self.global_best.as_ref().unwrap(), "[LOGGING_GLOBAL_BEST_ANT]");
         ants
     }
 
@@ -377,37 +379,37 @@ impl Solution {
 
 // All the following are pretty hacky log outputs, optionally parsed to produce
 // visualizations.
-fn log_graph(graph: &Graph) {
-    info!("[LOGGING_GRAPH_START_TICK]{tick}", tick = graph.start_tick);
-    info!("[LOGGING_GRAPH_MAX_TICK]{tick}", tick = graph.max_ticks);
+fn debug_log_graph(graph: &Graph) {
+    debug!("[LOGGING_GRAPH_START_TICK]{tick}", tick = graph.start_tick);
+    debug!("[LOGGING_GRAPH_MAX_TICK]{tick}", tick = graph.max_ticks);
     for vertex in &graph.vertices {
-        info!("[LOGGING_GRAPH_VERTICES]{x} {y} {edges:?}",
+        debug!("[LOGGING_GRAPH_VERTICES]{x} {y} {edges:?}",
               x = vertex.position.x, y = vertex.position.y,
               edges = vertex.edges);
     }
     for edge in &graph.edges {
         let path_costs: Vec<u32> = edge.paths.iter().map(|p| p.cost).collect();
-        info!("[LOGGING_GRAPH_EDGES]{from} {to} {path_costs:?}",
+        debug!("[LOGGING_GRAPH_EDGES]{from} {to} {path_costs:?}",
               from = edge.from, to = edge.to);
     }
 }
-fn log_pheromones(colony: &Colony, iter: usize) {
+fn debug_log_pheromones(colony: &Colony, iter: usize) {
     let pheromones: Vec<f32> = colony.edge_trails.iter().map(|e| e.pheromone).collect();
-    info!("[LOGGING_PHEROMONES]{iter} {pheromones:?}");
+    debug!("[LOGGING_PHEROMONES]{iter} {pheromones:?}");
 }
-fn log_ant(ant: &Ant, tag: &str) {
-    info!("{tag}{start} {edges:?} {score}", start = ant.start,
+fn debug_log_ant(ant: &Ant, tag: &str) {
+    debug!("{tag}{start} {edges:?} {score}", start = ant.start,
           edges = ant.edges, score = ant.score);
 }
-fn log_heuristics(graph: &Graph) {
+fn debug_log_heuristics(graph: &Graph) {
     for edge in &graph.edges {
         let dists: Vec<u32> = edge.paths.iter().map(|p| p.cost).collect();
         let min = 1.0 / (*dists.iter().max().unwrap() as f32);
         let max = 1.0 / (*dists.iter().min().unwrap() as f32);
-        info!("[LOGGING_HEURISTIC]{min} {max}");
+        debug!("[LOGGING_HEURISTIC]{min} {max}");
     }
 }
-fn log_scores(colony: &Colony, iter: usize) {
+fn debug_log_scores(colony: &Colony, iter: usize) {
     for (idx, vertex) in colony.graph.vertices.iter().enumerate() {
         for edge in &vertex.edges {
             let distances: Vec<u32> = colony.graph.edge(*edge).paths.iter().map(|p| p.cost).collect();
@@ -420,7 +422,7 @@ fn log_scores(colony: &Colony, iter: usize) {
             let max_eta = 1.0 / (min_dist as f32);
             let min_weight = tau.powf(alpha) * min_eta.powf(beta);
             let max_weight = tau.powf(alpha) * max_eta.powf(beta);
-            info!("[LOGGING_WEIGHTS]{iter} {idx} {edge} {min_weight} {max_weight}");
+            debug!("[LOGGING_WEIGHTS]{iter} {idx} {edge} {min_weight} {max_weight}");
         }
     }
 }

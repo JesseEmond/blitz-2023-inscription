@@ -58,7 +58,7 @@ def extract_game(logs: str) -> Tick:
   columns = int(re.search(r'columns: (\d+)', tick).group(1))
   topology_str = re.search(r'topology: Topology\((\[\[.*?\]\])\)', tick).group(1)
   topo_lines = topology_str[2:-2].split('], [')
-  topology = [[int(d) for topo in topo_lines for d in topo.split(', ')]]
+  topology = [[int(d) for d in topo.split(', ')] for topo in topo_lines]
   ports_str = re.search(r'ports: \[(.*?)\]', tick).group(1)
   ports = []
   for port_str in re.findall(r'Position \{.*?\}', ports_str):

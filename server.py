@@ -1,19 +1,23 @@
 #!/usr/bin/env python
 
 import asyncio
+import glob
 import json
+import os
 import sys
+import subprocess
 import time
 import websockets
+from typing import List
 
 from game_message import Action, Anchor, Dock, Position, Sail, Spawn, Tick, directions
 import seen_games
 
 
 class Game:
-  def __init__(self):
+  def __init__(self, tick: Tick):
     # Hacky copy
-    tick = Tick.from_dict(json.loads(json.dumps(seen_games.GAME1.to_dict())))
+    tick = Tick.from_dict(json.loads(json.dumps(tick.to_dict())))
     self.tick = tick
     self.nrows = len(self.tick.map.topology)
     self.ncols = len(self.tick.map.topology[0])
@@ -138,17 +142,62 @@ class Game:
     print(out)
 
 
+def show_scores(scores: List[int]):
+  print(f'All scores: {list(sorted(scores))}')
+  print(f'Min: {min(scores)}')
+  print(f'Max: {max(scores)}')
+  print(f'Average: {sum(scores) / len(scores):.1f}')
+
+
+is_eval = '--eval' in sys.argv
+slow = '--slow' in sys.argv
+fast = '--fast' in sys.argv or is_eval
+
+all_games = []
+game_index = None
+game_scores = []
+client_process = None
+
+
+def start_game():
+  global client_process
+  if client_process:
+    client_process.kill()
+    waited = False
+    printed = False
+    while client_process.poll() is None:
+      if waited:
+        print('.', end='', flush=True)
+        printed = True
+      time.sleep(0.2)
+      waited = True
+    if printed: print(' Ready!')
+  env = os.environ.copy()
+  env['RUST_LOG'] = 'warn'
+  client_process = subprocess.Popen(['./rust/target/release/application'], env=env)
+
 
 async def run():
+  global game_index
+  if is_eval:
+    for path in glob.glob('games/*.json'):
+      with open(path, 'r') as f:
+        all_games.append(Tick.from_dict(json.load(f)))
+    game_index = 0
+    print(f'{len(all_games)} games in our dev set')
+
   async with websockets.serve(handler, "", 8765):
+    if is_eval:
+      start_game()
     await asyncio.Future()
 
 
+
 async def handler(websocket):
-  slow = '--slow' in sys.argv
-  fast = '--fast' in sys.argv
+  global game_index
   game = None
   while not game or not game.tick.isOver:
+    reset_game = False
     if slow:
       time.sleep(1)
     try:
@@ -159,7 +208,10 @@ async def handler(websocket):
     data = json.loads(message)
     if data.get('type') == 'REGISTER':
       print("Started new game.")
-      game = Game()
+      if game_index is None:
+        game = Game(seen_games.GAME1)
+      else:
+        game = Game(all_games[game_index])
       if not fast: game.show()
       await websocket.send(json.dumps(game.tick.to_dict()))
     elif data.get('type') == 'COMMAND':
@@ -191,8 +243,19 @@ async def handler(websocket):
       game.apply(action)
       if not fast: game.show()
       if game.tick.isOver:
-        print(f"Game is done! Score: {game.score()}")
+        score = game.score()
+        print(f"Game is done! Score: {score}")
+        if is_eval:
+          game_index += 1
+          game_scores.append(score)
+          if game_index == len(all_games):
+            show_stats(game_scores)
+            exit(0)
+          reset_game = True
       await websocket.send(json.dumps(game.tick.to_dict()))
+      if reset_game:
+        await websocket.close()
+        start_game()
 
 
 if __name__ == "__main__":

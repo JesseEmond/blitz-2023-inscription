@@ -73,12 +73,16 @@ impl WebSocketGameClient {
                 // Copy current tick in order to send the command response
                 let current_tick = game_tick.current_tick;
                 // Fetch the next action from the bot
-                let action = self.bot.get_next_move(game_tick)?;
+                let action = self.bot.get_next_move(&game_tick)?;
 
                 info!("Action of bot is: {:?}", action);
                 let response = json!({"type": "COMMAND", "tick": current_tick, "action": action});
                 debug!("Response payload: {}", response.to_string());
                 stream.send(Message::Text(response.to_string())).await?;
+
+                if self.bot.is_done(&game_tick) {
+                    return Ok(())
+                }
             }
         }
     }

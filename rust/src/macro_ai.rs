@@ -1,4 +1,4 @@
-use log::{info};
+use log::{debug, info};
 
 use crate::ant_colony_optimization::{Colony, HyperParams, Solution};
 use crate::game_interface::{GameTick};
@@ -9,7 +9,7 @@ use crate::pathfinding::{Pathfinder, Pos};
 pub struct Macro {
     pathfinder: Pathfinder,
     solution: Option<Solution>,
-    solution_idx: usize
+    solution_idx: usize,
 }
 
 impl Macro {
@@ -26,6 +26,7 @@ impl Macro {
         self.pathfinder.grid.init(&game_tick.map, &schedule,
                                   game_tick.current_tick.into());
 
+        // This is a bit verbose, but we always want this on server.
         info!("--- TICK DUMP BEGIN ---");
         info!("{game_tick:?}");
         info!("--- TICK DUMP END ---");
@@ -60,7 +61,7 @@ impl Macro {
             let next_port_path = self.solution.as_ref().unwrap().paths[self.solution_idx].clone();
             info!("[MACRO] Will go to this port next: {port:?}, in {steps} steps.",
                   port = next_port_path.goal, steps = next_port_path.cost);
-            info!("[MACRO] Path: {path:?}", path = next_port_path.steps);
+            debug!("[MACRO] Path: {path:?}", path = next_port_path.steps);
             micro.state = State::Following {
                 path: next_port_path,
                 path_index: 0,

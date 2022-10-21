@@ -1,4 +1,4 @@
-use log::{info};
+use log::{debug, info};
 use std::collections::{HashSet};
 
 use crate::game_interface::{GameTick};
@@ -57,16 +57,16 @@ impl Graph {
         for (source_idx, port) in all_ports.iter().enumerate() {
             let mut targets = HashSet::from_iter(all_ports.iter().cloned());
             targets.remove(&port);
-            info!("Pathfinding from port {port:?}");
+            debug!("Pathfinding from port {port:?}");
             let all_offsets_paths = pathfinder.paths_to_all_targets_by_offset(
                 port, &targets, tick);
-            info!(concat!("Computed {num_paths} groups of paths ({size} ",
+            debug!(concat!("Computed {num_paths} groups of paths ({size} ",
                           "options each). Here they are:"),
-                  num_paths = all_offsets_paths.len(),
-                  size = game_tick.tide_schedule.len());
+                   num_paths = all_offsets_paths.len(),
+                   size = game_tick.tide_schedule.len());
             for (target, offset_paths) in &all_offsets_paths {
                 let costs: Vec<u32> = offset_paths.iter().map(|path| path.cost).collect();
-                info!("  to {target:?}, costs {costs:?}");
+                debug!("  to {target:?}, costs {costs:?}");
             }
             for (target_idx, port) in all_ports.iter().enumerate() {
                 if let Some(paths) = all_offsets_paths.get(port) {
