@@ -33,8 +33,8 @@ impl Macro {
         let graph = Graph::new(&mut self.pathfinder, game_tick);
         let mut hyperparams = HyperParams::default_params(/*iterations=*/1000);
         hyperparams.ants = 100;
-        hyperparams.pheromone_trail_power = 0.0;
-        hyperparams.heuristic_power = 5.0;
+        hyperparams.pheromone_trail_power = 1.0;
+        hyperparams.heuristic_power = 3.0;
         let mut colony = Colony::new(graph, hyperparams, /*seed=*/42);
         self.solution = Some(colony.run());
         self.solution_idx = 0;

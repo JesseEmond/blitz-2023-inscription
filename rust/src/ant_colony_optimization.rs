@@ -1,4 +1,5 @@
 use log::{info};
+use std::cmp::Ordering;
 use std::iter;
 use rand::{Rng, SeedableRng};
 use rand::distributions::{Distribution, WeightedIndex};
@@ -15,8 +16,10 @@ use crate::pathfinding::{Path, Pos};
 // TODO: to consider trying:
 // - Compare to AS
 // - MMAS (min-max ant system): bounds on pheromone, init to max
-// - Update pheromones using global best
+// - Update pheromones using local best
 // - Update pheromones using global best, on a schedule
+// - Pheromone at the edge-tick_offset level
+// - Update best when score is equal
 // - Rank-based version of any-system?
 // - Include local search before updates?
 // - Update both directions of edge?
@@ -35,7 +38,7 @@ pub struct HyperParams {
 
     // q0 used when choosing actions. With probability q0, the best move is
     // exploited instead of sampling.
-    pub exploitation_threshold: f32,
+    pub exploitation_probability: f32,
 
     // 'α' (alpha) used when sampling actions, applied to the pheromone τ: τ^α
     pub pheromone_trail_power: f32,
@@ -83,17 +86,15 @@ pub struct Solution {
 
 impl HyperParams {
     pub fn default_params(iterations: usize) -> Self {
-        // Some reasonable default params, based on section 1.5.2 of
-        // https://staff.washington.edu/paymana/swarm/stutzle99-eaecs.pdf
         HyperParams {
             iterations: iterations,
             ants: 25,
             evaporation_rate: 0.2,
-            exploitation_threshold: 0.0,  // Note: not in the MMAS example used
+            exploitation_probability: 0.1,
             pheromone_trail_power: 1.0,
-            heuristic_power: 2.0,
-            base_pheromones: 0.0,  // Unused for MMAS setup
-            local_evaporation_rate: 0.0,  // No local evaporation
+            heuristic_power: 3.0,
+            base_pheromones: 0.01,
+            local_evaporation_rate: 0.01,
         }
     }
 }
@@ -250,9 +251,13 @@ impl Colony {
     }
 
     pub fn run(&mut self) -> Solution {
+        log_graph(&self.graph);
+        log_heuristics(&self.graph);
         for iter in 0..self.hyperparams.iterations {
             info!("ACO iteration #{iter}/{total}", iter = iter + 1,
                    total = self.hyperparams.iterations);
+            log_pheromones(&self, iter);
+            log_scores(&self, iter);
             self.run_iteration();
             let best_ant = self.global_best.as_ref().expect("No solution found...?");
             info!("  best global score: {best}", best = best_ant.score);
@@ -270,13 +275,15 @@ impl Colony {
     fn construct_solutions(&mut self) -> Vec<Ant> {
         let ants: Vec<Ant> = iter::repeat(()).take(self.hyperparams.ants)
             .map(|_| self.construct_solution()).collect();
+        for (i, ant) in ants.iter().enumerate() { log_ant(ant, format!("[LOGGING_ANT]{i} ").as_str()); }
         let local_best = ants.iter().max_by_key(|ant| ant.score).cloned().unwrap();
         info!("  local best score: {score}", score = local_best.score);
-        // Note: include '=' too so that the best can vary for equal scores.
+        log_ant(&local_best, "[LOGGING_LOCAL_BEST_ANT]");
         if self.global_best.is_none()
-            || local_best.score >= self.global_best.as_ref().unwrap().score {
+            || local_best.score > self.global_best.as_ref().unwrap().score {
             self.global_best = Some(local_best);
         }
+        log_ant(&self.global_best.as_ref().unwrap(), "[LOGGING_GLOBAL_BEST_ANT]");
         ants
     }
 
@@ -299,11 +306,14 @@ impl Colony {
             tau.powf(alpha) * eta.powf(beta)
         }).collect();
         if weights.iter().sum::<f32>() == 0f32 {
-            let closest = options.iter().min_by_key(
-                |&e| self.graph.edge(*e).path(tick).cost).cloned().unwrap();
-            return closest;
+            return options[self.rng.gen_range(0..options.len())];
         }
-        // TODO: sometimes take greedy one (based on exploitation_threshold)
+        if self.rng.gen::<f32>() < self.hyperparams.exploitation_probability {
+            let idx = weights.iter().enumerate()
+                .max_by(|(_, w1), (_, w2)| w1.partial_cmp(w2).unwrap_or(Ordering::Equal))
+                .map(|(idx, _)| idx).unwrap();
+            return options[idx];
+        }
         let distribution = WeightedIndex::new(&weights).unwrap();
         options[distribution.sample(&mut self.rng)]
     }
@@ -334,7 +344,12 @@ impl Colony {
         // Global trail update
         // TODO: sometimes pick local best?
         let best = self.global_best.as_ref().expect("No global best at update time!");
-        let pheromone_add = self.hyperparams.evaporation_rate * (best.score as f32);
+        let upper_bound_score = eval_score((self.graph.vertices.len() + 1) as u32,
+                                           /*ticks=*/0, /*looped=*/true);
+        // TODO: compute pheromone add differently?
+        let add = 1.0 / (upper_bound_score + 1 - best.score) as f32;
+
+        let pheromone_add = self.hyperparams.evaporation_rate * add;
         for edge_id in &best.edges {
             self.edge_trails[*edge_id].add(pheromone_add);
             // TODO: also update other direction?
@@ -355,6 +370,57 @@ impl Solution {
             score: ant.score,
             spawn: graph.vertex(ant.start).position,
             paths: paths,
+        }
+    }
+}
+
+
+// All the following are pretty hacky log outputs, optionally parsed to produce
+// visualizations.
+fn log_graph(graph: &Graph) {
+    info!("[LOGGING_GRAPH_START_TICK]{tick}", tick = graph.start_tick);
+    info!("[LOGGING_GRAPH_MAX_TICK]{tick}", tick = graph.max_ticks);
+    for vertex in &graph.vertices {
+        info!("[LOGGING_GRAPH_VERTICES]{x} {y} {edges:?}",
+              x = vertex.position.x, y = vertex.position.y,
+              edges = vertex.edges);
+    }
+    for edge in &graph.edges {
+        let path_costs: Vec<u32> = edge.paths.iter().map(|p| p.cost).collect();
+        info!("[LOGGING_GRAPH_EDGES]{from} {to} {path_costs:?}",
+              from = edge.from, to = edge.to);
+    }
+}
+fn log_pheromones(colony: &Colony, iter: usize) {
+    let pheromones: Vec<f32> = colony.edge_trails.iter().map(|e| e.pheromone).collect();
+    info!("[LOGGING_PHEROMONES]{iter} {pheromones:?}");
+}
+fn log_ant(ant: &Ant, tag: &str) {
+    info!("{tag}{start} {edges:?} {score}", start = ant.start,
+          edges = ant.edges, score = ant.score);
+}
+fn log_heuristics(graph: &Graph) {
+    for edge in &graph.edges {
+        let dists: Vec<u32> = edge.paths.iter().map(|p| p.cost).collect();
+        let min = 1.0 / (*dists.iter().max().unwrap() as f32);
+        let max = 1.0 / (*dists.iter().min().unwrap() as f32);
+        info!("[LOGGING_HEURISTIC]{min} {max}");
+    }
+}
+fn log_scores(colony: &Colony, iter: usize) {
+    for (idx, vertex) in colony.graph.vertices.iter().enumerate() {
+        for edge in &vertex.edges {
+            let distances: Vec<u32> = colony.graph.edge(*edge).paths.iter().map(|p| p.cost).collect();
+            let min_dist = *distances.iter().min().unwrap();
+            let max_dist = *distances.iter().max().unwrap();
+            let tau = colony.edge_trails[*edge].pheromone;
+            let alpha = colony.hyperparams.pheromone_trail_power;
+            let beta = colony.hyperparams.heuristic_power;
+            let min_eta = 1.0 / (max_dist as f32);
+            let max_eta = 1.0 / (min_dist as f32);
+            let min_weight = tau.powf(alpha) * min_eta.powf(beta);
+            let max_weight = tau.powf(alpha) * max_eta.powf(beta);
+            info!("[LOGGING_WEIGHTS]{iter} {idx} {edge} {min_weight} {max_weight}");
         }
     }
 }
