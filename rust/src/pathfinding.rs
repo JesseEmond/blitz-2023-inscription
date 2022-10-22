@@ -35,6 +35,12 @@ pub struct Grid {
     height: usize,
 }
 
+impl Default for Grid {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Grid {
     pub fn new() -> Self {
         Grid {
@@ -46,13 +52,13 @@ impl Grid {
         }
     }
 
-    pub fn init(&mut self, map: &Map, schedule: &Vec<u8>, tick: u16) {
+    pub fn init(&mut self, map: &Map, schedule: &[u8], tick: u16) {
         let topology = &map.topology.0;
         self.topology = topology.iter().map(
             |row| row.iter().map(|&e| e as u8).collect()).collect();
         self.height = topology.len();
         self.width = topology[0].len();
-        self.tide_schedule = schedule.clone();
+        self.tide_schedule = schedule.to_owned();
         self.start_tick = tick;
     }
 
@@ -121,6 +127,12 @@ pub struct Pathfinder {
     cost_so_far: CostSoFar,
 }
 
+impl Default for Pathfinder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Pathfinder {
     pub fn new() -> Self {
         Pathfinder {
@@ -143,7 +155,7 @@ impl Pathfinder {
         }
         steps.push(*start);
         steps.reverse();
-        Some(Path { steps: steps, cost: cost, goal: *goal })
+        Some(Path { steps, cost, goal: *goal })
     }
 
     // TODO: use Vec instead of hashset?
@@ -167,7 +179,7 @@ impl Pathfinder {
 
         while !frontier.is_empty() {
             let (current, _) = frontier.pop().unwrap();
-            let cost = self.cost_so_far.get(&current).unwrap().clone();
+            let cost = *self.cost_so_far.get(&current).unwrap();
             let current_tick = tick + cost;
 
             if targets.contains(&current.position) {
@@ -271,7 +283,7 @@ impl Pathfinder {
                 assert!(out.contains_key(target) || offset == 0);
                 out.entry(*target)
                     .and_modify(|paths: &mut Vec<Path>| paths.push(path.clone()))
-                    .or_insert(vec![path.clone()]);
+                    .or_insert_with(|| vec![path.clone()]);
             }
         }
         assert!(out.values().all(|v| v.len() == self.grid.tide_schedule.len()));

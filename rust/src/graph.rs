@@ -32,13 +32,13 @@ pub struct Graph {
 }
 
 impl Edge {
-    pub fn new(from: VertexId, to: VertexId, paths: &Vec<Path>) -> Self {
-        Edge { from: from, to: to, paths: paths.clone() }
+    pub fn new(from: VertexId, to: VertexId, paths: &[Path]) -> Self {
+        Edge { from, to, paths: paths.to_owned() }
     }
 
     pub fn path(&self, tick: u16) -> &Path {
         unsafe {
-            &self.paths.get_unchecked((tick as usize) % self.paths.len())
+            self.paths.get_unchecked((tick as usize) % self.paths.len())
         }
     }
 
@@ -62,7 +62,7 @@ impl Graph {
         let mut edges = Vec::new();
         for (source_idx, port) in all_ports.iter().enumerate() {
             let mut targets = HashSet::from_iter(all_ports.iter().cloned());
-            targets.remove(&port);
+            targets.remove(port);
             debug!("Pathfinding from port {port:?}");
             let all_offsets_paths = pathfinder.paths_to_all_targets_by_offset(
                 port, &targets, tick);
@@ -86,8 +86,8 @@ impl Graph {
         info!("Graph created: {num_vertices} vertices, {num_edges} edges.",
               num_vertices = vertices.len(), num_edges = edges.len());
         Graph {
-            vertices: vertices,
-            edges: edges,
+            vertices,
+            edges,
             tick_offsets: game_tick.tide_schedule.len(),
             start_tick: tick + 1,  // time to spawn
             max_ticks: game_tick.total_ticks as u16,

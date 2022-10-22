@@ -14,6 +14,12 @@ pub struct Macro {
     solution_idx: usize,
 }
 
+impl Default for Macro {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Macro {
     pub fn new() -> Self {
         Macro {
@@ -25,8 +31,7 @@ impl Macro {
 
     pub fn init(&mut self, game_tick: &GameTick) {
         let schedule: Vec<u8> = game_tick.tide_schedule.iter().map(|&e| e as u8).collect();
-        self.pathfinder.grid.init(&game_tick.map, &schedule,
-                                  game_tick.current_tick.into());
+        self.pathfinder.grid.init(&game_tick.map, &schedule, game_tick.current_tick);
 
         // This is a bit verbose, but we always want this on server.
         info!("--- TICK DUMP BEGIN ---");

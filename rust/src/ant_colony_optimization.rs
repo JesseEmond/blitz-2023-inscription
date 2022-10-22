@@ -101,7 +101,7 @@ pub struct Solution {
 impl HyperParams {
     pub fn default_params(iterations: usize) -> Self {
         HyperParams {
-            iterations: iterations,
+            iterations,
             ants: 25,
             evaporation_rate: 0.2,
             exploitation_probability: 0.1,
@@ -212,9 +212,12 @@ impl Ant {
         let mut go_home_at_index: Option<usize> = None;
         for num_edges in 1..=self.edges.len() {
             let score = self.hypothetical_home_score(graph, num_edges);
-            if !score.is_none() && score.unwrap() > best_score {
-                best_score = score.unwrap();
-                go_home_at_index = Some(num_edges);  // insert after num_edges
+            match score {
+                Some(score) if score > best_score => {
+                    best_score = score;
+                    go_home_at_index = Some(num_edges);  // insert after num_edges
+                },
+                _ => (),
             }
         }
         if let Some(go_home_index) = go_home_at_index {
@@ -252,8 +255,8 @@ impl VertexTrails {
         VertexTrails {
             pheromones: vec![hyperparams.base_pheromones; vertex.edges.len()],
             offset_trail_weights: vec![vec![1.0; vertex.edges.len()]; graph.tick_offsets],
-            eta_pows: eta_pows,
-            costs: costs,
+            eta_pows,
+            costs,
             goes_to: vertex.edges.iter().map(|&edge_id| graph.edge(edge_id).to).collect(),
         }
     }
@@ -285,7 +288,7 @@ impl VertexTrails {
     pub fn weights(&self, tick: u16) -> &Vec<f32> {
         let offset = (tick as usize) % self.offset_trail_weights.len();
         unsafe {
-            &self.offset_trail_weights.get_unchecked(offset)
+            self.offset_trail_weights.get_unchecked(offset)
         }
     }
 
@@ -308,10 +311,10 @@ impl Colony {
             VertexTrails::new(vertex_id as VertexId, &graph, &hyperparams)
         }).collect();
         Colony {
-            graph: graph,
+            graph,
             trails: vertex_trails,
             global_best: None,
-            hyperparams: hyperparams,
+            hyperparams,
             rng: SmallRng::seed_from_u64(seed),
         }
     }
@@ -322,14 +325,14 @@ impl Colony {
         for iter in 0..self.hyperparams.iterations {
             info!("ACO iteration #{iter}/{total}", iter = iter + 1,
                    total = self.hyperparams.iterations);
-            debug_log_pheromones(&self, iter);
-            debug_log_scores(&self, iter);
+            debug_log_pheromones(self, iter);
+            debug_log_scores(self, iter);
             self.run_iteration();
             let best_ant = self.global_best.as_ref().expect("No solution found...?");
             info!("  best global score: {best}", best = best_ant.score);
         }
         let best_ant = self.global_best.as_ref().expect("No solution found...?");
-        Solution::from_ant(&best_ant, &self.graph)
+        Solution::from_ant(best_ant, &self.graph)
     }
 
     fn run_iteration(&mut self) {
@@ -351,7 +354,7 @@ impl Colony {
             || local_best.score > self.global_best.as_ref().unwrap().score {
             self.global_best = Some(local_best);
         }
-        debug_log_ant(&self.global_best.as_ref().unwrap(), "[LOGGING_GLOBAL_BEST_ANT]");
+        debug_log_ant(self.global_best.as_ref().unwrap(), "[LOGGING_GLOBAL_BEST_ANT]");
         ants
     }
 
@@ -397,7 +400,7 @@ impl Colony {
         let mut ant = Ant::new(self.graph.vertices.len() - 1);
         let start = self.rng.gen_range(0..self.graph.vertices.len());
         ant.reset(start as VertexId, self.graph.start_tick);
-        while let Some(edge_id) = self.sample_option(&mut ant) {
+        while let Some(edge_id) = self.sample_option(&ant) {
             let from = self.graph.edge(edge_id).from;
             let edge_idx = self.graph.vertex(from).edges.iter().position(|&e| e == edge_id).unwrap();
             // Local trail update
@@ -451,7 +454,7 @@ impl Solution {
         Solution {
             score: ant.score,
             spawn: graph.vertex(ant.start).position,
-            paths: paths,
+            paths,
         }
     }
 }

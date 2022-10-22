@@ -58,11 +58,11 @@ impl Bot {
               pos = game_tick.current_location);
 
         if game_tick.current_tick == 0 {
-            self.ai_macro.init(&game_tick);
+            self.ai_macro.init(game_tick);
         }
 
-        self.ai_macro.assign_state(&mut self.ai_micro, &game_tick);
-        Ok(self.ai_micro.get_move(&game_tick))
+        self.ai_macro.assign_state(&mut self.ai_micro, game_tick);
+        Ok(self.ai_micro.get_move(game_tick))
     }
 
     pub fn is_done(&self, game_tick: &GameTick) -> bool {

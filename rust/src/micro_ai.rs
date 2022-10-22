@@ -63,7 +63,7 @@ impl Micro {
             }
             State::Spawning { position } => {
                 let position = position.to_position();
-                action = Some(Action::Spawn { position: position });
+                action = Some(Action::Spawn { position });
                 State::Docking
             },
             State::Docking => {
