@@ -458,7 +458,8 @@ impl Solution {
         repeat_ant.reset(ant.start, graph.start_tick);
         let mut paths = Vec::new();
         for edge_id in &ant.edges {
-            paths.push(graph.edge(*edge_id).path(repeat_ant.tick).clone());
+            let path_id = graph.edge(*edge_id).path(repeat_ant.tick).path;
+            paths.push(graph.paths[path_id as usize].clone());
             repeat_ant.visit(*edge_id, graph);
         }
         Solution {

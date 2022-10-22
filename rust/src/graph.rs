@@ -14,18 +14,28 @@ pub const MAX_EDGES: usize = MAX_VERTEX_EDGES * MAX_VERTICES;
 
 type Vertices = SmallVec<[Vertex; MAX_VERTICES]>;
 type Edges = SmallVec<[Edge; 256]>;  // note: 240 not supported
+type PathPtrs = SmallVec<[PathPtr; MAX_TICK_OFFSETS]>;
 
 pub type VertexId = u8;
 pub type EdgeId = u16;
+pub type PathId = u16;
 
-#[derive(Clone)]
+// Small container for path information, for optimization purposes since the
+// full list of paths take up a lot of space.
+#[derive(Clone, Debug, Copy)]
+pub struct PathPtr {
+    pub path: PathId,
+    pub cost: u16,
+}
+
+#[derive(Clone, Debug)]
 pub struct Edge {
     pub from: VertexId,
     pub to: VertexId,
-    pub paths: SmallVec<[Path; MAX_TICK_OFFSETS]>,
+    pub paths: PathPtrs,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Vertex {
     // TODO: change to fixed array of Options, ordered by vertex (so that it's
     // O(1) to know which edge leads to what vertex)?
@@ -34,7 +44,7 @@ pub struct Vertex {
     pub position: Pos,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Graph {
     pub vertices: Vertices,
     pub edges: Edges,
@@ -42,14 +52,15 @@ pub struct Graph {
     // Tick where paths were computed. Offsets must be computed off of this.
     pub start_tick: u16,
     pub max_ticks: u16,
+    pub paths: Vec<Path>,
 }
 
 impl Edge {
-    pub fn new(from: VertexId, to: VertexId, paths: &[Path]) -> Self {
+    pub fn new(from: VertexId, to: VertexId, paths: &[PathPtr]) -> Self {
         Edge { from, to, paths: SmallVec::from(paths) }
     }
 
-    pub fn path(&self, tick: u16) -> &Path {
+    pub fn path(&self, tick: u16) -> &PathPtr {
         unsafe {
             self.paths.get_unchecked((tick as usize) % self.paths.len())
         }
@@ -79,6 +90,7 @@ impl Graph {
                 "Too many vertices to store in-line. {vertices}",
                 vertices = vertices.len());
         let mut edges: Edges = SmallVec::new();
+        let mut paths: Vec<Path> = Vec::new();
         for (source_idx, port) in all_ports.iter().enumerate() {
             let mut targets = HashSet::from_iter(all_ports.iter().cloned());
             targets.remove(port);
@@ -94,9 +106,22 @@ impl Graph {
                 debug!("  to {target:?}, costs {costs:?}");
             }
             for (target_idx, port) in all_ports.iter().enumerate() {
-                if let Some(paths) = all_offsets_paths.get(port) {
+                if let Some(edge_paths) = all_offsets_paths.get(port) {
                     let edge_id = edges.len();
-                    edges.push(Edge::new(source_idx as VertexId, target_idx as VertexId, paths));
+                    let mut path_ptrs = PathPtrs::new();
+                    for path in edge_paths {
+                        let path_id = paths.len();
+                        // TODO: could re-use existing IDs for paths that are
+                        // the same on this edge.
+                        path_ptrs.push(PathPtr {
+                            path: path_id as PathId,
+                            cost: path.cost
+                        });
+                        paths.push(path.clone());
+                    }
+                    edges.push(Edge::new(source_idx as VertexId,
+                                         target_idx as VertexId,
+                                         &path_ptrs));
                     vertices[source_idx as usize].edges.push(edge_id as EdgeId);
                 }
             }
@@ -113,6 +138,7 @@ impl Graph {
             tick_offsets: game_tick.tide_schedule.len(),
             start_tick: tick + 1,  // time to spawn
             max_ticks: game_tick.total_ticks as u16,
+            paths,
         }
     }
 
