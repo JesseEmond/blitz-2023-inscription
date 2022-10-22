@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub fn eval_score(visits: u32, ticks: u32, looped: bool) -> i32 {
+pub fn eval_score(visits: u32, ticks: u16, looped: bool) -> i32 {
     let bonus = if looped { 2 } else { 1 };
     // The last visit back home doesn't count.
     let visits = if looped { visits - 1 } else { visits };

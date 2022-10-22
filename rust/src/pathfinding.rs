@@ -21,14 +21,14 @@ impl Pos {
     }
 }
 
-fn chebyshev_distance(a: &Pos, b: &Pos) -> u32 {
-    u32::max((a.x as i32 - b.x as i32).abs() as u32,
-             (a.y as i32 - b.y as i32).abs() as u32)
+fn chebyshev_distance(a: &Pos, b: &Pos) -> u16 {
+    u16::max((a.x as i32 - b.x as i32).abs() as u16,
+             (a.y as i32 - b.y as i32).abs() as u16)
 }
 
 pub struct Grid {
     tide_schedule: Vec<u8>,
-    start_tick: u32,
+    start_tick: u16,
     // TODO: consider representing 2 items per u8?
     topology: Vec<Vec<u8>>,
     width: usize,
@@ -46,7 +46,7 @@ impl Grid {
         }
     }
 
-    pub fn init(&mut self, map: &Map, schedule: &Vec<u8>, tick: u32) {
+    pub fn init(&mut self, map: &Map, schedule: &Vec<u8>, tick: u16) {
         let topology = &map.topology.0;
         self.topology = topology.iter().map(
             |row| row.iter().map(|&e| e as u8).collect()).collect();
@@ -56,16 +56,16 @@ impl Grid {
         self.start_tick = tick;
     }
 
-    pub fn tide(&self, tick: u32) -> u8 {
+    pub fn tide(&self, tick: u16) -> u8 {
         let idx = ((tick - self.start_tick) as usize) % self.tide_schedule.len();
         self.tide_schedule[idx]
     }
 
-    pub fn navigable(&self, pos: &Pos, tick: u32) -> bool {
+    pub fn navigable(&self, pos: &Pos, tick: u16) -> bool {
         self.topology[pos.y as usize][pos.x as usize] < self.tide(tick)
     }
 
-    pub fn neighbors(&self, pos: Pos, tick: u32) -> impl Iterator<Item=Pos> + '_ {
+    pub fn neighbors(&self, pos: Pos, tick: u16) -> impl Iterator<Item=Pos> + '_ {
         const DELTAS: [(i32, i32); 8] = [(-1, -1), (-1, 0), (-1, 1), (0, -1),
                                          (0, 1), (1, -1), (1, 0), (1, 1)];
         DELTAS.iter().filter_map(move |&(dx, dy)| {
@@ -91,7 +91,7 @@ impl Grid {
 #[derive(Debug, Clone)]
 pub struct Path {
     pub steps: Vec<Pos>,
-    pub cost: u32,
+    pub cost: u16,
     pub goal: Pos,
 }
 
@@ -107,10 +107,10 @@ pub struct State {
 }
 
 type CameFrom = HashMap<State, State>;
-type CostSoFar = HashMap<State, u32>;
+type CostSoFar = HashMap<State, u16>;
 type Targets = HashSet<Pos>;
 
-fn heuristic(src: &Pos, targets: &Targets) -> u32 {
+fn heuristic(src: &Pos, targets: &Targets) -> u16 {
     targets.iter().map(|target| chebyshev_distance(src, target)).min().unwrap()
 }
 
@@ -148,7 +148,7 @@ impl Pathfinder {
 
     // TODO: use Vec instead of hashset?
     fn a_star_search(
-        &mut self, start: &Pos, targets: &Targets, tick: u32,
+        &mut self, start: &Pos, targets: &Targets, tick: u16,
         stop_on_first: bool
         ) -> Option<Pos> {
         self.cost_so_far.clear();
@@ -208,7 +208,7 @@ impl Pathfinder {
     }
 
     pub fn shortest_path(
-        &mut self, start: &Pos, target: &Pos, tick: u32
+        &mut self, start: &Pos, target: &Pos, tick: u16
         ) -> Option<Path> {
         let targets = Targets::from([*target]);
         if let Some(goal) = self.a_star_search(
@@ -220,8 +220,8 @@ impl Pathfinder {
     }
 
     pub fn distance(
-        &mut self, start: &Pos, target: &Pos, tick: u32
-        ) -> Option<u32> {
+        &mut self, start: &Pos, target: &Pos, tick: u16
+        ) -> Option<u16> {
         let targets = Targets::from([*target]);
         if let Some(goal) = self.a_star_search(
             start, &targets, tick, /*stop_on_first=*/true) {
@@ -235,7 +235,7 @@ impl Pathfinder {
     }
 
     pub fn path_to_closest(
-        &mut self, start: &Pos, targets: &Targets, tick: u32
+        &mut self, start: &Pos, targets: &Targets, tick: u16
         ) -> Option<Path> {
         if let Some(goal) = self.a_star_search(
             start, targets, tick, /*stop_on_first=*/true) {
@@ -246,7 +246,7 @@ impl Pathfinder {
     }
 
     pub fn paths_to_all_targets(
-        &mut self, start: &Pos, targets: &Targets, tick: u32
+        &mut self, start: &Pos, targets: &Targets, tick: u16
         ) -> HashMap<Pos, Path> {
         let mut out = HashMap::new();
         self.a_star_search(start, targets, tick, /*stop_on_first=*/false);
@@ -261,11 +261,11 @@ impl Pathfinder {
     // For each goal, gives a list of paths to the other targets: one for each
     // possible tick offset we start at.
     pub fn paths_to_all_targets_by_offset(
-        &mut self, start: &Pos, targets: &Targets, tick: u32
+        &mut self, start: &Pos, targets: &Targets, tick: u16
         ) -> HashMap<Pos, Vec<Path>> {
         let mut out = HashMap::new();
         for offset in 0..self.grid.tide_schedule.len() {
-            let tick = tick + (offset as u32);
+            let tick = tick + (offset as u16);
             let all_paths = self.paths_to_all_targets(start, targets, tick);
             for (target, path) in &all_paths {
                 assert!(out.contains_key(target) || offset == 0);

@@ -60,7 +60,7 @@ pub struct HyperParams {
 pub struct Ant {
     pub start: VertexId,
     pub edges: Vec<EdgeId>,
-    pub tick: u32,
+    pub tick: u16,
     pub score: i32,
     pub seen: u64,  // mask of seen vertices
 }
@@ -78,7 +78,7 @@ pub struct VertexTrails {
     pub eta_pows: Vec<Vec<f32>>,
 
     // For a given offset, cost of the edge path. Used for faster lookups.
-    costs: Vec<Vec<u32>>,
+    costs: Vec<Vec<u16>>,
     // Edges go where, for faster lookup.
     goes_to: Vec<VertexId>,
 }
@@ -113,17 +113,17 @@ impl HyperParams {
 }
 
 impl Ant {
-    pub fn new() -> Self {
+    pub fn new(node_edges: usize) -> Self {
         Ant {
             start: 0,
             tick: 0,
-            edges: Vec::new(),
+            edges: Vec::with_capacity(node_edges),
             score: 0,
             seen: 0,
         }
     }
 
-    pub fn reset(&mut self, start: VertexId, tick: u32) {
+    pub fn reset(&mut self, start: VertexId, tick: u16) {
         self.start = start;
         self.tick = tick + 1;  // Time to dock our start
         self.edges.clear();
@@ -167,8 +167,7 @@ impl Ant {
         &self, graph: &Graph, num_edges: usize
         ) -> Option<i32> {
         let (vertex, mut tick) = self.simulate_to_num_edges(graph, num_edges);
-        let edge_go_home = graph.vertex_edge_to(vertex, self.start)
-            .expect("No path home..?");
+        let edge_go_home = graph.vertex_edge_to(vertex, self.start).expect("No path home..?");
         let cost_go_home = graph.edge(edge_go_home).path(tick).cost;
         tick += cost_go_home; // no +1, last home docking doesn't count.
         if tick < graph.max_ticks {
@@ -183,7 +182,7 @@ impl Ant {
     // of the ant's stored edges.
     fn simulate_to_num_edges(
         &self, graph: &Graph, num_edges: usize
-        ) -> (VertexId, u32) {
+        ) -> (VertexId, u16) {
         let mut tick = graph.start_tick + 1;  // +1 to dock initially
         let mut vertex = self.start;
         for edge_id in &self.edges[..num_edges] {
@@ -202,7 +201,7 @@ impl Ant {
         }
     }
 
-    fn valid_option(&self, edge_cost: u32, to_vertex_id: VertexId, graph: &Graph) -> bool {
+    fn valid_option(&self, edge_cost: u16, to_vertex_id: VertexId, graph: &Graph) -> bool {
         let seen = (self.seen & (1u64 << to_vertex_id)) != 0;
         self.tick + edge_cost + 1 < graph.max_ticks && !seen
     }
@@ -235,19 +234,19 @@ impl Ant {
 }
 
 impl VertexTrails {
-    pub fn new(vertex_id: usize, graph: &Graph, hyperparams: &HyperParams) -> Self {
+    pub fn new(vertex_id: VertexId, graph: &Graph, hyperparams: &HyperParams) -> Self {
         let vertex = graph.vertex(vertex_id);
         let eta_pows: Vec<Vec<f32>> = (0..graph.tick_offsets).map(|offset| {
             vertex.edges.iter().map(|&edge_id| {
-                let distance = graph.edge(edge_id).path(offset as u32).cost;
+                let distance = graph.edge(edge_id).path(offset as u16).cost;
                 let beta = hyperparams.heuristic_power;
                 let eta = 1.0 / (distance as f32);
                 eta.powf(beta)
             }).collect()
         }).collect();
-        let costs: Vec<Vec<u32>> = (0..graph.tick_offsets).map(|offset| {
+        let costs: Vec<Vec<u16>> = (0..graph.tick_offsets).map(|offset| {
             vertex.edges.iter().map(|&edge_id| {
-                graph.edge(edge_id).path(offset as u32).cost
+                graph.edge(edge_id).path(offset as u16).cost
             }).collect()
         }).collect();
         VertexTrails {
@@ -279,25 +278,25 @@ impl VertexTrails {
     pub fn update_weights(&mut self, option_idx: usize) {
         for offset in 0..self.offset_trail_weights.len() {
             let tau = self.pheromones[option_idx];
-            self.offset_trail_weights[offset][option_idx] = tau * self.eta_pow(option_idx, offset as u32);
+            self.offset_trail_weights[offset][option_idx] = tau * self.eta_pow(option_idx, offset as u16);
         }
     }
 
-    pub fn weights(&self, tick: u32) -> &Vec<f32> {
+    pub fn weights(&self, tick: u16) -> &Vec<f32> {
         let offset = (tick as usize) % self.offset_trail_weights.len();
         unsafe {
             &self.offset_trail_weights.get_unchecked(offset)
         }
     }
 
-    pub fn cost(&self, tick: u32, edge_idx: usize) -> u32 {
+    pub fn cost(&self, tick: u16, edge_idx: usize) -> u16 {
         let offset = (tick as usize) % self.costs.len();
         unsafe {
             *self.costs.get_unchecked(offset).get_unchecked(edge_idx)
         }
     }
 
-    fn eta_pow(&self, option_idx: usize, tick: u32) -> f32 {
+    fn eta_pow(&self, option_idx: usize, tick: u16) -> f32 {
         let offset = (tick as usize) % self.eta_pows.len();
         self.eta_pows[offset][option_idx]
     }
@@ -306,7 +305,7 @@ impl VertexTrails {
 impl Colony {
     pub fn new(graph: Graph, hyperparams: HyperParams, seed: u64) -> Self {
         let vertex_trails = (0..graph.vertices.len()).map(|vertex_id| {
-            VertexTrails::new(vertex_id, &graph, &hyperparams)
+            VertexTrails::new(vertex_id as VertexId, &graph, &hyperparams)
         }).collect();
         Colony {
             graph: graph,
@@ -359,7 +358,7 @@ impl Colony {
     fn sample_option(&mut self, ant: &Ant) -> Option<EdgeId> {
         let tick = ant.tick;
         let vertex_id = ant.current_vertex(&self.graph);
-        let trail = &self.trails[vertex_id];
+        let trail = &self.trails[vertex_id as usize];
         let vertex = &self.graph.vertex(vertex_id);
         let weights = trail.weights(tick).iter().enumerate().map(|(i, w)| {
             let valid = ant.valid_option(trail.cost(tick, i), trail.goes_to[i],
@@ -395,16 +394,16 @@ impl Colony {
     }
 
     fn construct_solution(&mut self) -> Ant {
-        let mut ant = Ant::new();
+        let mut ant = Ant::new(self.graph.vertices.len() - 1);
         let start = self.rng.gen_range(0..self.graph.vertices.len());
-        ant.reset(start, self.graph.start_tick);
+        ant.reset(start as VertexId, self.graph.start_tick);
         while let Some(edge_id) = self.sample_option(&mut ant) {
             let from = self.graph.edge(edge_id).from;
             let edge_idx = self.graph.vertex(from).edges.iter().position(|&e| e == edge_id).unwrap();
             // Local trail update
             let pheromone_add = self.hyperparams.local_evaporation_rate
                 * self.hyperparams.base_pheromones;
-            self.trails[from].evaporate_add(edge_idx,
+            self.trails[from as usize].evaporate_add(edge_idx,
                 self.hyperparams.local_evaporation_rate,pheromone_add);
             // TODO: also update other direction?
             ant.visit(edge_id, &self.graph);
@@ -434,7 +433,7 @@ impl Colony {
             let edge = self.graph.edge(*edge_id);
             let vertex = self.graph.vertex(edge.from);
             let edge_idx = vertex.edges.iter().position(|&e| e == *edge_id).unwrap();
-            self.trails[edge.from].add(edge_idx, pheromone_add)
+            self.trails[edge.from as usize].add(edge_idx, pheromone_add)
             // TODO: also update other direction?
         }
     }
@@ -442,7 +441,7 @@ impl Colony {
 
 impl Solution {
     pub fn from_ant(ant: &Ant, graph: &Graph) -> Self {
-        let mut repeat_ant = Ant::new();
+        let mut repeat_ant = Ant::new(ant.edges.len());
         repeat_ant.reset(ant.start, graph.start_tick);
         let mut paths = Vec::new();
         for edge_id in &ant.edges {
@@ -469,7 +468,7 @@ fn debug_log_graph(graph: &Graph) {
               edges = vertex.edges);
     }
     for edge in &graph.edges {
-        let path_costs: Vec<u32> = edge.paths.iter().map(|p| p.cost).collect();
+        let path_costs: Vec<u16> = edge.paths.iter().map(|p| p.cost).collect();
         debug!("[LOGGING_GRAPH_EDGES]{from} {to} {path_costs:?}",
               from = edge.from, to = edge.to);
     }
@@ -478,7 +477,7 @@ fn debug_log_pheromones(colony: &Colony, iter: usize) {
     let mut pheromones: Vec<f32> = vec![0.0; colony.graph.edges.len()];
     for (vertex_id, vertex) in colony.graph.vertices.iter().enumerate() {
         for (edge_idx, edge_id) in vertex.edges.iter().enumerate() {
-            pheromones[*edge_id] = colony.trails[vertex_id].pheromones[edge_idx];
+            pheromones[*edge_id as usize] = colony.trails[vertex_id].pheromones[edge_idx];
         }
     }
     debug!("[LOGGING_PHEROMONES]{iter} {pheromones:?}");
@@ -489,7 +488,7 @@ fn debug_log_ant(ant: &Ant, tag: &str) {
 }
 fn debug_log_heuristics(graph: &Graph) {
     for edge in &graph.edges {
-        let dists: Vec<u32> = edge.paths.iter().map(|p| p.cost).collect();
+        let dists: Vec<u16> = edge.paths.iter().map(|p| p.cost).collect();
         let min = 1.0 / (*dists.iter().max().unwrap() as f32);
         let max = 1.0 / (*dists.iter().min().unwrap() as f32);
         debug!("[LOGGING_HEURISTIC]{min} {max}");
@@ -498,7 +497,7 @@ fn debug_log_heuristics(graph: &Graph) {
 fn debug_log_scores(colony: &Colony, iter: usize) {
     for (idx, vertex) in colony.graph.vertices.iter().enumerate() {
         for (edge_idx, edge) in vertex.edges.iter().enumerate() {
-            let distances: Vec<u32> = colony.graph.edge(*edge).paths.iter().map(|p| p.cost).collect();
+            let distances: Vec<u16> = colony.graph.edge(*edge).paths.iter().map(|p| p.cost).collect();
             let min_dist = *distances.iter().min().unwrap();
             let max_dist = *distances.iter().max().unwrap();
             let tau = colony.trails[idx].pheromones[edge_idx];

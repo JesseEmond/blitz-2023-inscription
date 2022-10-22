@@ -4,9 +4,8 @@ use std::collections::{HashSet};
 use crate::game_interface::{GameTick};
 use crate::pathfinding::{Path, Pathfinder, Pos};
 
-pub type VertexId = usize;
-pub type EdgeId = usize;
-pub type VertexEdgeId = usize;
+pub type VertexId = u8;
+pub type EdgeId = u16;
 
 #[derive(Clone)]
 pub struct Edge {
@@ -19,6 +18,7 @@ pub struct Edge {
 pub struct Vertex {
     pub edges: Vec<EdgeId>,
     pub position: Pos,
+    // TODO pack edges here..?
 }
 
 #[derive(Clone)]
@@ -27,8 +27,8 @@ pub struct Graph {
     pub edges: Vec<Edge>,
     pub tick_offsets: usize,
     // Tick where paths were computed. Offsets must be computed off of this.
-    pub start_tick: u32,
-    pub max_ticks: u32,
+    pub start_tick: u16,
+    pub max_ticks: u16,
 }
 
 impl Edge {
@@ -36,13 +36,13 @@ impl Edge {
         Edge { from: from, to: to, paths: paths.clone() }
     }
 
-    pub fn path(&self, tick: u32) -> &Path {
+    pub fn path(&self, tick: u16) -> &Path {
         unsafe {
             &self.paths.get_unchecked((tick as usize) % self.paths.len())
         }
     }
 
-    pub fn cost(&self, tick: u32) -> u32 {
+    pub fn cost(&self, tick: u16) -> u16 {
         self.path(tick).cost
     }
 }
@@ -55,7 +55,7 @@ impl Vertex {
 
 impl Graph {
     pub fn new(pathfinder: &mut Pathfinder, game_tick: &GameTick) -> Self {
-        let tick = game_tick.current_tick as u32;
+        let tick = game_tick.current_tick as u16;
         let all_ports: Vec<Pos> = game_tick.map.ports.iter().map(
             Pos::from_position).collect();
         let mut vertices: Vec<Vertex> = all_ports.iter().map(Vertex::new).collect();
@@ -71,14 +71,14 @@ impl Graph {
                    num_paths = all_offsets_paths.len(),
                    size = game_tick.tide_schedule.len());
             for (target, offset_paths) in &all_offsets_paths {
-                let costs: Vec<u32> = offset_paths.iter().map(|path| path.cost).collect();
+                let costs: Vec<u16> = offset_paths.iter().map(|path| path.cost).collect();
                 debug!("  to {target:?}, costs {costs:?}");
             }
             for (target_idx, port) in all_ports.iter().enumerate() {
                 if let Some(paths) = all_offsets_paths.get(port) {
                     let edge_id = edges.len();
-                    edges.push(Edge::new(source_idx, target_idx, paths));
-                    vertices[source_idx].edges.push(edge_id);
+                    edges.push(Edge::new(source_idx as VertexId, target_idx as VertexId, paths));
+                    vertices[source_idx as usize].edges.push(edge_id as EdgeId);
                 }
             }
         }
@@ -90,16 +90,18 @@ impl Graph {
             edges: edges,
             tick_offsets: game_tick.tide_schedule.len(),
             start_tick: tick + 1,  // time to spawn
-            max_ticks: game_tick.total_ticks as u32,
+            max_ticks: game_tick.total_ticks as u16,
         }
     }
 
+    #[inline]
     pub fn edge(&self, edge_id: EdgeId) -> &Edge {
-        &self.edges[edge_id]
+        &self.edges[edge_id as usize]
     }
 
+    #[inline]
     pub fn vertex(&self, vertex_id: VertexId) -> &Vertex {
-        &self.vertices[vertex_id]
+        &self.vertices[vertex_id as usize]
     }
 
     pub fn vertex_edge_to(

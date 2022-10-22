@@ -4,7 +4,9 @@ version = "1.0.0"
 edition = "2021"
 
 [profile.release]
-lto = "thin" # Enable Link Time Optimization.
+lto = true
+codegen-units = 1
+# debug = true  # Use only when profiling
 
 [[bin]]
 name = "application" # Don't change this, our backend expects a fixed binary path
@@ -29,4 +31,3 @@ rand = { version = "0.8.5", features = [ "small_rng" ] }
 
 [dev-dependencies]
 criterion = "0.3"
-# debug = true  # Use only when profiling
