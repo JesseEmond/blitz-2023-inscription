@@ -8,10 +8,58 @@ import sys
 import subprocess
 import time
 import websockets
+from dataclasses import dataclass
+from dataclasses_json import dataclass_json
 from typing import List
+from vizier.service import clients
+from vizier.service import pyvizier as vz
+from vizier.service import vizier_service
 
 from game_message import Action, Anchor, Dock, Position, Sail, Spawn, Tick, directions
 import seen_games
+
+
+@dataclass_json
+@dataclass
+class Hyperparams:
+  iterations: int
+  ants: int
+  evaporation_rate: float
+  exploitation_probability: float
+  pheromone_trail_power: float
+  heuristic_power: float
+  base_pheromones: float
+  local_evaporation_rate: float
+
+
+def vizier_problem_statement() -> vz.ProblemStatement:
+  problem = vz.ProblemStatement()
+  problem.search_space.root.add_int_param('iterations', 1, 500)
+  problem.search_space.root.add_int_param('ants', 10, 600)
+  problem.search_space.root.add_float_param('evaporation_rate', 0.3, 0.8)
+  problem.search_space.root.add_float_param('exploitation_probability', 0.0, 0.4)
+  problem.search_space.root.add_float_param('pheromone_trail_power', 1.0, 7.0)
+  problem.search_space.root.add_float_param('heuristic_power', 1.0, 5.0)
+  problem.search_space.root.add_float_param('base_pheromones', 0.1, 5.0)
+  problem.search_space.root.add_float_param('local_evaporation_rate', 0.3, 0.8)
+  problem.metric_information.append(
+      vz.MetricInformation(name='maximize_score',
+                           goal=vz.ObjectiveMetricGoal.MAXIMIZE))
+  return problem
+
+
+def from_suggestion(suggestion) -> Hyperparams:
+  params = suggestion.parameters
+  return Hyperparams(
+      iterations=int(params['iterations']),
+      ants=int(params['ants']),
+      evaporation_rate=params['evaporation_rate'],
+      exploitation_probability=params['exploitation_probability'],
+      pheromone_trail_power=params['pheromone_trail_power'],
+      heuristic_power=params['heuristic_power'],
+      base_pheromones=params['base_pheromones'],
+      local_evaporation_rate=params['local_evaporation_rate'],
+      )
 
 
 class Game:
@@ -149,7 +197,8 @@ def show_stats(scores: List[int]):
   print(f'Average: {sum(scores) / len(scores):.1f}')
 
 
-is_eval = '--eval' in sys.argv
+is_sweep = '--sweep' in sys.argv
+is_eval = '--eval' in sys.argv or is_sweep
 slow = '--slow' in sys.argv
 fast = '--fast' in sys.argv or is_eval
 
@@ -157,6 +206,17 @@ all_games = []
 game_index = None
 game_scores = []
 client_process = None
+
+study_config = vz.StudyConfig.from_problem(vizier_problem_statement())
+study_config.algorithm = vz.Algorithm.QUASI_RANDOM_SEARCH
+
+service = vizier_service.DefaultVizierService()
+clients.environment_variables.service_endpoint = service.endpoint
+study_client = clients.Study.from_study_config(
+    study_config, owner='emond', study_id='sweep')
+suggestions = []
+suggestion_idx = None
+rounds = 0
 
 
 def start_game():
@@ -172,9 +232,24 @@ def start_game():
       time.sleep(0.2)
       waited = True
     if printed: print(' Ready!')
+  if is_sweep:
+    if game_index == 0:
+      hyperparams = from_suggestion(suggestions[suggestion_idx])
+      print(f'Round #{rounds} Suggestion #{suggestion_idx+1}: {hyperparams}')
+      with open('hyperparams.json', 'w') as f:
+        json.dump(hyperparams.to_dict(), f)
   env = os.environ.copy()
   env['RUST_LOG'] = 'warn'
   client_process = subprocess.Popen(['./rust/target/release/application'], env=env)
+
+
+def new_suggestions():
+  global suggestions
+  global suggestion_idx
+  global rounds
+  suggestions = study_client.suggest(count=5)
+  suggestion_idx = 0
+  rounds += 1
 
 
 async def run():
@@ -187,6 +262,8 @@ async def run():
     print(f'{len(all_games)} games in our dev set')
 
   async with websockets.serve(handler, "", 8765):
+    if is_sweep:
+      new_suggestions()
     if is_eval:
       start_game()
     await asyncio.Future()
@@ -195,6 +272,7 @@ async def run():
 
 async def handler(websocket):
   global game_index
+  global suggestion_idx
   game = None
   while not game or not game.tick.isOver:
     reset_game = False
@@ -207,7 +285,8 @@ async def handler(websocket):
       break
     data = json.loads(message)
     if data.get('type') == 'REGISTER':
-      print("Started new game.")
+      if not is_sweep:
+        print("Started new game.")
       if game_index is None:
         game = Game(seen_games.GAME1)
       else:
@@ -244,14 +323,30 @@ async def handler(websocket):
       if not fast: game.show()
       if game.tick.isOver:
         score = game.score()
-        print(f"Game is done! Score: {score}")
+        if not is_sweep:
+          print(f"Game is done! Score: {score}")
         if is_eval:
           game_index += 1
           game_scores.append(score)
           if game_index == len(all_games):
             show_stats(game_scores)
-            await websocket.close()
-            exit(0)
+            if is_sweep:
+              avg_score = sum(game_scores) / len(game_scores)
+              max_score = max(game_scores)
+              metric = avg_score + max_score / 1000
+              measurement = vz.Measurement({'maximize_score': metric})
+              suggestions[suggestion_idx].complete(measurement)
+              for optimal in study_client.optimal_trials():
+                optimal = optimal.materialize()
+                print(f'Best trial: {optimal.final_measurement} params: {optimal.parameters}')
+              suggestion_idx += 1
+              if suggestion_idx == len(suggestions):
+                new_suggestions()
+            else:
+              await websocket.close()
+              exit(0)
+            game_index = 0
+            game_scores.clear()
           reset_game = True
       await websocket.send(json.dumps(game.tick.to_dict()))
       if reset_game:

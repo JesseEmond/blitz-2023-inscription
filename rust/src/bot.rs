@@ -5,8 +5,11 @@
 // [x] Mine X real old games from logs
 // [x] Make eval setup, give score distribution on X games
 // [x] Load hyperparams from file
-// [ ] Integrate with vizier
+// [x] Integrate with vizier
+// [ ] Profile to speed up sweeping
 // [ ] Need to speed up to fit in 1 turn?
+// [ ] Run a couple times online
+// [ ] Add more sweepable hyperparameters/features
 use log::info;
 use thiserror::Error;
 

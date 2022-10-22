@@ -8,20 +8,24 @@ pub type VertexId = usize;
 pub type EdgeId = usize;
 pub type VertexEdgeId = usize;
 
+#[derive(Clone)]
 pub struct Edge {
     pub from: VertexId,
     pub to: VertexId,
     pub paths: Vec<Path>,
 }
 
+#[derive(Clone)]
 pub struct Vertex {
     pub edges: Vec<EdgeId>,
     pub position: Pos,
 }
 
+#[derive(Clone)]
 pub struct Graph {
     pub vertices: Vec<Vertex>,
     pub edges: Vec<Edge>,
+    pub tick_offsets: usize,
     // Tick where paths were computed. Offsets must be computed off of this.
     pub start_tick: u32,
     pub max_ticks: u32,
@@ -33,7 +37,9 @@ impl Edge {
     }
 
     pub fn path(&self, tick: u32) -> &Path {
-        &self.paths[(tick as usize) % self.paths.len()]
+        unsafe {
+            &self.paths.get_unchecked((tick as usize) % self.paths.len())
+        }
     }
 
     pub fn cost(&self, tick: u32) -> u32 {
@@ -82,6 +88,7 @@ impl Graph {
         Graph {
             vertices: vertices,
             edges: edges,
+            tick_offsets: game_tick.tide_schedule.len(),
             start_tick: tick + 1,  // time to spawn
             max_ticks: game_tick.total_ticks as u32,
         }

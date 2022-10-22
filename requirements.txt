@@ -3,3 +3,4 @@ dataclasses-json==0.5.2
 networkx
 matplotlib
 requests
+google-vizier
