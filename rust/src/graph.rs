@@ -1,8 +1,19 @@
 use log::{debug, info};
+use smallvec::SmallVec;
 use std::collections::{HashSet};
 
 use crate::game_interface::{GameTick};
 use crate::pathfinding::{Path, Pathfinder, Pos};
+
+pub const MAX_TICK_OFFSETS: usize = 16;
+pub const MAX_VERTICES: usize = 16;
+// Because it's a complete graph.
+pub const MAX_VERTEX_EDGES: usize = MAX_VERTICES - 1;
+// Because it's a complete graph.
+pub const MAX_EDGES: usize = MAX_VERTEX_EDGES * MAX_VERTICES;
+
+type Vertices = SmallVec<[Vertex; MAX_VERTICES]>;
+type Edges = SmallVec<[Edge; 256]>;  // note: 240 not supported
 
 pub type VertexId = u8;
 pub type EdgeId = u16;
@@ -11,20 +22,22 @@ pub type EdgeId = u16;
 pub struct Edge {
     pub from: VertexId,
     pub to: VertexId,
-    pub paths: Vec<Path>,
+    pub paths: SmallVec<[Path; MAX_TICK_OFFSETS]>,
 }
 
 #[derive(Clone)]
 pub struct Vertex {
-    pub edges: Vec<EdgeId>,
+    // TODO: change to fixed array of Options, ordered by vertex (so that it's
+    // O(1) to know which edge leads to what vertex)?
+    // TODO: remove edgeid and store edges here in-line?
+    pub edges: SmallVec<[EdgeId; MAX_VERTEX_EDGES]>,
     pub position: Pos,
-    // TODO pack edges here..?
 }
 
 #[derive(Clone)]
 pub struct Graph {
-    pub vertices: Vec<Vertex>,
-    pub edges: Vec<Edge>,
+    pub vertices: Vertices,
+    pub edges: Edges,
     pub tick_offsets: usize,
     // Tick where paths were computed. Offsets must be computed off of this.
     pub start_tick: u16,
@@ -33,7 +46,7 @@ pub struct Graph {
 
 impl Edge {
     pub fn new(from: VertexId, to: VertexId, paths: &[Path]) -> Self {
-        Edge { from, to, paths: paths.to_owned() }
+        Edge { from, to, paths: SmallVec::from(paths) }
     }
 
     pub fn path(&self, tick: u16) -> &Path {
@@ -49,17 +62,23 @@ impl Edge {
 
 impl Vertex {
     pub fn new(position: &Pos) -> Self {
-        Vertex { position: *position, edges: Vec::new() }
+        Vertex { position: *position, edges: SmallVec::new() }
     }
 }
 
 impl Graph {
     pub fn new(pathfinder: &mut Pathfinder, game_tick: &GameTick) -> Self {
+        assert!(game_tick.tide_schedule.len() <= MAX_TICK_OFFSETS,
+            "Can't guarantee inline storage for tide schedule of {count} elements",
+            count = game_tick.tide_schedule.len());
         let tick = game_tick.current_tick as u16;
         let all_ports: Vec<Pos> = game_tick.map.ports.iter().map(
             Pos::from_position).collect();
-        let mut vertices: Vec<Vertex> = all_ports.iter().map(Vertex::new).collect();
-        let mut edges = Vec::new();
+        let mut vertices: Vertices = SmallVec::from_iter(all_ports.iter().map(Vertex::new));
+        assert!(vertices.len() <= MAX_VERTICES,
+                "Too many vertices to store in-line. {vertices}",
+                vertices = vertices.len());
+        let mut edges: Edges = SmallVec::new();
         for (source_idx, port) in all_ports.iter().enumerate() {
             let mut targets = HashSet::from_iter(all_ports.iter().cloned());
             targets.remove(port);
@@ -82,6 +101,9 @@ impl Graph {
                 }
             }
         }
+
+        assert!(!vertices.spilled(), "Vertices spilled: {len}", len = vertices.len());
+        assert!(!edges.spilled(), "Edges spilled: {len}", len = edges.len());
 
         info!("Graph created: {num_vertices} vertices, {num_edges} edges.",
               num_vertices = vertices.len(), num_edges = edges.len());

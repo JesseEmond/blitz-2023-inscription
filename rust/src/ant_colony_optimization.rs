@@ -1,5 +1,6 @@
 use log::{debug, info};
 use serde::{Deserialize};
+use smallvec::{SmallVec, smallvec};
 use std::cmp::Ordering;
 use std::iter;
 use rand::{Rng, SeedableRng};
@@ -7,7 +8,7 @@ use rand::distributions::{Distribution, WeightedIndex};
 use rand::rngs::SmallRng;
 
 use crate::game_interface::{eval_score};
-use crate::graph::{EdgeId, Graph, VertexId};
+use crate::graph::{EdgeId, Graph, VertexId, MAX_VERTEX_EDGES, MAX_TICK_OFFSETS, MAX_VERTICES};
 use crate::pathfinding::{Path, Pos};
 
 // Based on the documentation at:
@@ -59,28 +60,34 @@ pub struct HyperParams {
 #[derive(Clone)]
 pub struct Ant {
     pub start: VertexId,
-    pub edges: Vec<EdgeId>,
+    pub edges: SmallVec<[EdgeId; MAX_VERTICES]>,
     pub tick: u16,
     pub score: i32,
     pub seen: u64,  // mask of seen vertices
 }
 
+type EtaPows = SmallVec<[SmallVec<[f32; MAX_VERTEX_EDGES]>; MAX_TICK_OFFSETS]>;
+type Costs = SmallVec<[SmallVec<[u16; MAX_VERTEX_EDGES]>; MAX_TICK_OFFSETS]>;
+type EdgeWeights = SmallVec<[f32; MAX_VERTEX_EDGES]>;
+
 // Holds the trails coming out of a vertex, used for optimization purposes to
 // precompute Vecs of weights.
 pub struct VertexTrails {
+    // TODO move data together..?
+
     // τ, pheromone strength of each edge.
-    pub pheromones: Vec<f32>,
+    pub pheromones: SmallVec<[f32; MAX_VERTEX_EDGES]>,
 
     // For a given tick offset, a list of pre-computed weights, one for each
     // edge.Used in sampling.
-    pub offset_trail_weights: Vec<Vec<f32>>,
+    pub offset_trail_weights: SmallVec<[EdgeWeights; MAX_TICK_OFFSETS]>,
     // Pre-computed per-edge eta^beta, for each tick offset.
-    pub eta_pows: Vec<Vec<f32>>,
+    pub eta_pows: EtaPows,
 
     // For a given offset, cost of the edge path. Used for faster lookups.
-    costs: Vec<Vec<u16>>,
+    costs: Costs,
     // Edges go where, for faster lookup.
-    goes_to: Vec<VertexId>,
+    goes_to: SmallVec<[VertexId; MAX_VERTEX_EDGES]>,
 }
 
 pub struct Colony {
@@ -113,11 +120,11 @@ impl HyperParams {
 }
 
 impl Ant {
-    pub fn new(node_edges: usize) -> Self {
+    pub fn new() -> Self {
         Ant {
             start: 0,
             tick: 0,
-            edges: Vec::with_capacity(node_edges),
+            edges: SmallVec::new(),
             score: 0,
             seen: 0,
         }
@@ -239,7 +246,7 @@ impl Ant {
 impl VertexTrails {
     pub fn new(vertex_id: VertexId, graph: &Graph, hyperparams: &HyperParams) -> Self {
         let vertex = graph.vertex(vertex_id);
-        let eta_pows: Vec<Vec<f32>> = (0..graph.tick_offsets).map(|offset| {
+        let eta_pows: EtaPows = (0..graph.tick_offsets).map(|offset| {
             vertex.edges.iter().map(|&edge_id| {
                 let distance = graph.edge(edge_id).path(offset as u16).cost;
                 let beta = hyperparams.heuristic_power;
@@ -247,14 +254,17 @@ impl VertexTrails {
                 eta.powf(beta)
             }).collect()
         }).collect();
-        let costs: Vec<Vec<u16>> = (0..graph.tick_offsets).map(|offset| {
+        let costs: Costs = (0..graph.tick_offsets).map(|offset| {
             vertex.edges.iter().map(|&edge_id| {
                 graph.edge(edge_id).path(offset as u16).cost
             }).collect()
         }).collect();
+
+        assert!(!eta_pows.spilled());
+        assert!(!costs.spilled());
         VertexTrails {
-            pheromones: vec![hyperparams.base_pheromones; vertex.edges.len()],
-            offset_trail_weights: vec![vec![1.0; vertex.edges.len()]; graph.tick_offsets],
+            pheromones: smallvec![hyperparams.base_pheromones; vertex.edges.len()],
+            offset_trail_weights: smallvec![smallvec![1.0; vertex.edges.len()]; graph.tick_offsets],
             eta_pows,
             costs,
             goes_to: vertex.edges.iter().map(|&edge_id| graph.edge(edge_id).to).collect(),
@@ -285,7 +295,7 @@ impl VertexTrails {
         }
     }
 
-    pub fn weights(&self, tick: u16) -> &Vec<f32> {
+    pub fn weights(&self, tick: u16) -> &EdgeWeights {
         let offset = (tick as usize) % self.offset_trail_weights.len();
         unsafe {
             self.offset_trail_weights.get_unchecked(offset)
@@ -397,7 +407,7 @@ impl Colony {
     }
 
     fn construct_solution(&mut self) -> Ant {
-        let mut ant = Ant::new(self.graph.vertices.len() - 1);
+        let mut ant = Ant::new();
         let start = self.rng.gen_range(0..self.graph.vertices.len());
         ant.reset(start as VertexId, self.graph.start_tick);
         while let Some(edge_id) = self.sample_option(&ant) {
@@ -444,7 +454,7 @@ impl Colony {
 
 impl Solution {
     pub fn from_ant(ant: &Ant, graph: &Graph) -> Self {
-        let mut repeat_ant = Ant::new(ant.edges.len());
+        let mut repeat_ant = Ant::new();
         repeat_ant.reset(ant.start, graph.start_tick);
         let mut paths = Vec::new();
         for edge_id in &ant.edges {
