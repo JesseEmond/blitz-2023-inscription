@@ -104,6 +104,13 @@ impl Graph {
             for (target, offset_paths) in &all_offsets_paths {
                 let costs: Vec<u16> = offset_paths.iter().map(|path| path.cost).collect();
                 debug!("  to {target:?}, costs {costs:?}");
+                // Verify individual paths -- for debugging purposes only.
+                for offset in 0..offset_paths.len() {
+                    let dist = pathfinder.distance(port, target, tick + (offset as u16));
+                    assert!(dist.unwrap() == costs[offset],
+                            "from {:?} to {:?} get direct cost of {}, but computed {}",
+                            port, target, dist.unwrap(), costs[offset]);
+                }
             }
             for (target_idx, port) in all_ports.iter().enumerate() {
                 if let Some(edge_paths) = all_offsets_paths.get(port) {

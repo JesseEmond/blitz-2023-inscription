@@ -5,6 +5,7 @@ import hyperparams
 import glob
 import json
 import os
+import re
 import sys
 import subprocess
 import time
@@ -47,12 +48,13 @@ def from_suggestion(suggestion) -> hyperparams.Hyperparams:
 
 
 class Game:
-  def __init__(self, tick: Tick):
+  def __init__(self, tick: Tick, id_: int):
     # Hacky copy
     tick = Tick.from_dict(json.loads(json.dumps(tick.to_dict())))
     self.tick = tick
     self.nrows = len(self.tick.map.topology)
     self.ncols = len(self.tick.map.topology[0])
+    self.id = id_
 
   def apply(self, action: Action) -> None:
     if action.kind == 'spawn':
@@ -187,6 +189,7 @@ slow = '--slow' in sys.argv
 fast = '--fast' in sys.argv or is_eval
 
 all_games = []
+game_ids = []
 game_index = None
 game_scores = []
 client_process = None
@@ -240,6 +243,8 @@ async def run():
   global game_index
   if is_eval:
     for path in glob.glob('games/*.json'):
+      game_id = int(re.match(r'games/(\d+).json', path).group(1))
+      game_ids.append(game_id)
       with open(path, 'r') as f:
         all_games.append(Tick.from_dict(json.load(f)))
     game_index = 0
@@ -269,19 +274,20 @@ async def handler(websocket):
       break
     data = json.loads(message)
     if data.get('type') == 'REGISTER':
-      if not is_sweep:
-        print("Started new game.")
       if game_index is None:
         if any(arg.startswith('--gameid=') for arg in sys.argv):
           arg = next(arg for arg in sys.argv if arg.startswith('--gameid='))
           _, game_id = arg.split('=')
           game_id = int(game_id)
           with open(f'games/{game_id}.json', 'r') as f:
-            game = Game(Tick.from_dict(json.load(f)))
+            game = Game(Tick.from_dict(json.load(f)), game_id)
         else:
-          game = Game(seen_games.GAME1)
+          game = Game(seen_games.GAME1, -1)
       else:
-        game = Game(all_games[game_index])
+        game = Game(all_games[game_index], game_ids[game_index])
+      if not is_sweep:
+        print(f"Started game #{game.id} ({len(game.tick.map.ports)} ports "
+              f"{game.tick.map.rows}x{game.tick.map.columns})")
       if not fast: game.show()
       await websocket.send(json.dumps(game.tick.to_dict()))
     elif data.get('type') == 'COMMAND':

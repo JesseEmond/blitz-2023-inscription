@@ -101,7 +101,7 @@ for i in range(num_games):
   print(f'Starting game #{i}...')
   game_id = start_game()
   print(f'  waiting for game #{game_id}...')
-  time.sleep(2 * 60)
+  time.sleep(5 * 60)
   print('  downloading game logs...')
   logs = read_game_logs(game_id)
   game = extract_game(logs)

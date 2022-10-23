@@ -1,9 +1,9 @@
 // TODOs
-// [x] Add timing info logging
-// [x] Debug game #2614 -- can reproduce timeout locally?
-// [ ] Plot params in sweep -- can we relax ants/iterations?
+// [ ] CPU info -- any use in multithreading pathfinding?
+// [ ] Optimize pathfinding on game #2614
 // [ ] Optimize to have a safer first tick
 // [ ] Re-create greedy bot to get eval comparison
+// [ ] Compare to same as above that samples, try many times in 1s
 // [ ] Add more sweepable hyperparameters/features
 use log::info;
 use std::time::{Instant};

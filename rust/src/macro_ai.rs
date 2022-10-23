@@ -4,8 +4,8 @@ use std::fs;
 use std::time::{Instant};
 
 use crate::ant_colony_optimization::{Colony, HyperParams, Solution};
-use crate::game_interface::{GameTick};
-use crate::graph::{Graph};
+use crate::game_interface::{GameTick, eval_score};
+use crate::graph::{Graph, VertexId};
 use crate::micro_ai::{Micro, State};
 use crate::pathfinding::{Pathfinder, Pos};
 
@@ -43,6 +43,10 @@ impl Macro {
         let graph_start = Instant::now();
         let graph = Graph::new(&mut self.pathfinder, game_tick);
         info!("Graph was built in {:?}", graph_start.elapsed());
+
+        let greedy_sln = greedy_bot(&graph);
+        info!("A greedy bot would get us a score of {score}", score = greedy_sln.score);
+
         let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
             info!("[MACRO] Loading hyperparams from hyperparams.json.");
             let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
@@ -107,4 +111,70 @@ impl Macro {
         }
         // else, no-op, micro is no a task.
     }
+}
+
+pub fn greedy_bot(graph: &Graph) -> Solution {
+    let mut best_sln: Option<Solution> = None;
+    for start_vertex_id in 0..graph.vertices.len() {
+        let start_vertex_id = start_vertex_id as VertexId;
+        let mut seen = 1u64 << start_vertex_id;
+        let mut tick = graph.start_tick;
+        let mut current_id = start_vertex_id;
+        let mut paths = Vec::new();
+
+        loop {
+            let vertex = graph.vertex(current_id);
+            let options = vertex.edges.iter().filter(|&edge_id| {
+                let edge = graph.edge(*edge_id);
+                let mask = 1u64 << edge.to;
+                let unseen = seen & mask == 0;
+                let have_time = tick + edge.path(tick).cost + 1 < graph.max_ticks;
+                unseen && have_time
+            });
+            let closest = match options.min_by_key(|&edge_id| {
+                graph.edge(*edge_id).path(tick).cost }) {
+                Some(&edge_id) => edge_id,
+                None => break,
+            };
+            let edge = graph.edge(closest);
+            current_id = edge.to;
+            seen |= 1u64 << current_id;
+            tick += edge.path(tick).cost + 1;
+            paths.push(edge.path(tick).path);
+            let visits = seen.count_ones();
+            // First compute score if we stay here until the end of the game
+            let score = eval_score(visits, graph.max_ticks, /*looped=*/false);
+            let best_score = match &best_sln {
+                Some(sln) => sln.score,
+                None => score - 1,
+            };
+            if score > best_score {
+                best_sln = Some(Solution {
+                    score,
+                    spawn: graph.vertex(start_vertex_id).position,
+                    paths: paths.iter().map(|&path_id| graph.paths[path_id as usize].clone()).collect(),
+                });
+            }
+
+            // Consider going home from there, if we have time.
+            let home_edge_id = graph.vertex_edge_to(
+                current_id, start_vertex_id).expect("No way home?");
+            let home_edge = graph.edge(home_edge_id);
+            if tick + home_edge.path(tick).cost < graph.max_ticks {
+                let home_score = eval_score(visits + 1,
+                                            tick + home_edge.path(tick).cost,
+                                            /*looped=*/true);
+                if home_score > best_score {
+                    let mut paths = paths.clone();
+                    paths.push(home_edge.path(tick).path);
+                    best_sln = Some(Solution {
+                        score: home_score,
+                        spawn: graph.vertex(start_vertex_id).position,
+                        paths: paths.iter().map(|&path_id| graph.paths[path_id as usize].clone()).collect(),
+                    });
+                }
+            }
+        }
+    }
+    best_sln.unwrap()
 }
