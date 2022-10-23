@@ -1,6 +1,6 @@
+use arrayvec::ArrayVec;
 use log::{debug, info};
 use serde::{Deserialize};
-use smallvec::{SmallVec, smallvec};
 use std::cmp::Ordering;
 use std::iter;
 use rand::{Rng, SeedableRng};
@@ -60,15 +60,15 @@ pub struct HyperParams {
 #[derive(Clone)]
 pub struct Ant {
     pub start: VertexId,
-    pub edges: SmallVec<[EdgeId; MAX_VERTICES]>,
+    pub edges: ArrayVec<EdgeId, MAX_VERTICES>,
     pub tick: u16,
     pub score: i32,
     pub seen: u64,  // mask of seen vertices
 }
 
-type EtaPows = SmallVec<[SmallVec<[f32; MAX_VERTEX_EDGES]>; MAX_TICK_OFFSETS]>;
-type Costs = SmallVec<[SmallVec<[u16; MAX_VERTEX_EDGES]>; MAX_TICK_OFFSETS]>;
-type EdgeWeights = SmallVec<[f32; MAX_VERTEX_EDGES]>;
+type EtaPows = ArrayVec<ArrayVec<f32, MAX_VERTEX_EDGES>, MAX_TICK_OFFSETS>;
+type Costs = ArrayVec::<ArrayVec::<u16, MAX_VERTEX_EDGES>, MAX_TICK_OFFSETS>;
+type EdgeWeights = ArrayVec<f32, MAX_VERTEX_EDGES>;
 
 // Holds the trails coming out of a vertex, used for optimization purposes to
 // precompute Vecs of weights.
@@ -76,18 +76,18 @@ pub struct VertexTrails {
     // TODO move data together..?
 
     // τ, pheromone strength of each edge.
-    pub pheromones: SmallVec<[f32; MAX_VERTEX_EDGES]>,
+    pub pheromones: ArrayVec<f32, MAX_VERTEX_EDGES>,
 
     // For a given tick offset, a list of pre-computed weights, one for each
     // edge.Used in sampling.
-    pub offset_trail_weights: SmallVec<[EdgeWeights; MAX_TICK_OFFSETS]>,
+    pub offset_trail_weights: ArrayVec<EdgeWeights, MAX_TICK_OFFSETS>,
     // Pre-computed per-edge eta^beta, for each tick offset.
     pub eta_pows: EtaPows,
 
     // For a given offset, cost of the edge path. Used for faster lookups.
     costs: Costs,
     // Edges go where, for faster lookup.
-    goes_to: SmallVec<[VertexId; MAX_VERTEX_EDGES]>,
+    goes_to: ArrayVec<VertexId, MAX_VERTEX_EDGES>,
 }
 
 pub struct Colony {
@@ -124,7 +124,7 @@ impl Ant {
         Ant {
             start: 0,
             tick: 0,
-            edges: SmallVec::new(),
+            edges: ArrayVec::new(),
             score: 0,
             seen: 0,
         }
@@ -260,11 +260,9 @@ impl VertexTrails {
             }).collect()
         }).collect();
 
-        assert!(!eta_pows.spilled());
-        assert!(!costs.spilled());
         VertexTrails {
-            pheromones: smallvec![hyperparams.base_pheromones; vertex.edges.len()],
-            offset_trail_weights: smallvec![smallvec![1.0; vertex.edges.len()]; graph.tick_offsets],
+            pheromones: ArrayVec::from_iter(vec![hyperparams.base_pheromones; vertex.edges.len()]),
+            offset_trail_weights: ArrayVec::from_iter(vec![ArrayVec::from_iter(vec![1.0; vertex.edges.len()]); graph.tick_offsets]),
             eta_pows,
             costs,
             goes_to: vertex.edges.iter().map(|&edge_id| graph.edge(edge_id).to).collect(),

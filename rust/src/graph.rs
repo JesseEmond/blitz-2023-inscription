@@ -1,5 +1,5 @@
+use arrayvec::ArrayVec;
 use log::{debug, info};
-use smallvec::SmallVec;
 use std::collections::{HashSet};
 
 use crate::game_interface::{GameTick};
@@ -12,9 +12,9 @@ pub const MAX_VERTEX_EDGES: usize = MAX_VERTICES - 1;
 // Because it's a complete graph.
 pub const MAX_EDGES: usize = MAX_VERTEX_EDGES * MAX_VERTICES;
 
-type Vertices = SmallVec<[Vertex; MAX_VERTICES]>;
-type Edges = SmallVec<[Edge; 256]>;  // note: 240 not supported
-type PathPtrs = SmallVec<[PathPtr; MAX_TICK_OFFSETS]>;
+type Vertices = ArrayVec<Vertex, MAX_VERTICES>;
+type Edges = ArrayVec<Edge, 256>;  // note: 240 not supported
+type PathPtrs = ArrayVec<PathPtr, MAX_TICK_OFFSETS>;
 
 pub type VertexId = u8;
 pub type EdgeId = u16;
@@ -40,7 +40,7 @@ pub struct Vertex {
     // TODO: change to fixed array of Options, ordered by vertex (so that it's
     // O(1) to know which edge leads to what vertex)?
     // TODO: remove edgeid and store edges here in-line?
-    pub edges: SmallVec<[EdgeId; MAX_VERTEX_EDGES]>,
+    pub edges: ArrayVec<EdgeId, MAX_VERTEX_EDGES>,
     pub position: Pos,
 }
 
@@ -57,7 +57,7 @@ pub struct Graph {
 
 impl Edge {
     pub fn new(from: VertexId, to: VertexId, paths: &[PathPtr]) -> Self {
-        Edge { from, to, paths: SmallVec::from(paths) }
+        Edge { from, to, paths: ArrayVec::from_iter(paths.iter().cloned()) }
     }
 
     pub fn path(&self, tick: u16) -> &PathPtr {
@@ -73,7 +73,7 @@ impl Edge {
 
 impl Vertex {
     pub fn new(position: &Pos) -> Self {
-        Vertex { position: *position, edges: SmallVec::new() }
+        Vertex { position: *position, edges: ArrayVec::new() }
     }
 }
 
@@ -85,11 +85,11 @@ impl Graph {
         let tick = game_tick.current_tick as u16;
         let all_ports: Vec<Pos> = game_tick.map.ports.iter().map(
             Pos::from_position).collect();
-        let mut vertices: Vertices = SmallVec::from_iter(all_ports.iter().map(Vertex::new));
+        let mut vertices: Vertices = ArrayVec::from_iter(all_ports.iter().map(Vertex::new));
         assert!(vertices.len() <= MAX_VERTICES,
                 "Too many vertices to store in-line. {vertices}",
                 vertices = vertices.len());
-        let mut edges: Edges = SmallVec::new();
+        let mut edges: Edges = ArrayVec::new();
         let mut paths: Vec<Path> = Vec::new();
         for (source_idx, port) in all_ports.iter().enumerate() {
             let mut targets = HashSet::from_iter(all_ports.iter().cloned());
@@ -126,9 +126,6 @@ impl Graph {
                 }
             }
         }
-
-        assert!(!vertices.spilled(), "Vertices spilled: {len}", len = vertices.len());
-        assert!(!edges.spilled(), "Edges spilled: {len}", len = edges.len());
 
         info!("Graph created: {num_vertices} vertices, {num_edges} edges.",
               num_vertices = vertices.len(), num_edges = edges.len());
