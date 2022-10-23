@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::iter;
 use priority_queue::PriorityQueue;
@@ -26,6 +27,8 @@ fn chebyshev_distance(a: &Pos, b: &Pos) -> u16 {
              (a.y as i32 - b.y as i32).abs() as u16)
 }
 
+type Neighbors = ArrayVec<Pos, 8>;
+
 pub struct Grid {
     tide_schedule: Vec<u8>,
     start_tick: u16,
@@ -33,6 +36,8 @@ pub struct Grid {
     topology: Vec<Vec<u8>>,
     width: usize,
     height: usize,
+    // neighbors[y][x][tick_offset]
+    neighbors: Vec<Vec<Vec<Neighbors>>>,
 }
 
 impl Default for Grid {
@@ -49,6 +54,7 @@ impl Grid {
             start_tick: 0,
             width: 0,
             height: 0,
+            neighbors: Vec::new(),
         }
     }
 
@@ -60,6 +66,22 @@ impl Grid {
         self.width = topology[0].len();
         self.tide_schedule = schedule.to_owned();
         self.start_tick = tick;
+        self.neighbors.clear();
+        for y in 0..self.height {
+            let y = y as u16;
+            let mut row: Vec<Vec<Neighbors>> = Vec::with_capacity(self.width);
+            for x in 0..self.width {
+                let x = x as u16;
+                let mut col: Vec<Neighbors> = Vec::with_capacity(self.tide_schedule.len());
+                for tick_offset in 0..self.tide_schedule.len() {
+                    let tick_offset = tick_offset as u16;
+                    let neighbors = self.neighbors(Pos { x, y }, tick_offset);
+                    col.push(ArrayVec::from_iter(neighbors));
+                }
+                row.push(col);
+            }
+            self.neighbors.push(row);
+        }
     }
 
     pub fn tide(&self, tick: u16) -> u8 {
@@ -201,8 +223,9 @@ impl Pathfinder {
                 break;
             }
 
-            let neighbors = self.grid.neighbors(current.position(), current_tick)
-                .map(|n| State::new(n, 0));
+            let tick_offset = current_tick % (self.grid.tide_schedule.len() as u16);
+            let neighbors = self.grid.neighbors[current.position().y as usize][current.position().x as usize][tick_offset as usize]
+                .iter().map(|&n| State::new(n, 0));
             let wait_here = iter::once(
                 State::new(current.position(), current.wait() + 1));
             // We must wait if we're stuck on ground
