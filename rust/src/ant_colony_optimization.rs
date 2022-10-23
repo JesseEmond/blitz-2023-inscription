@@ -62,6 +62,7 @@ pub struct Ant {
     pub start: VertexId,
     pub edges: ArrayVec<EdgeId, MAX_VERTICES>,
     pub tick: u16,
+    pub tick_offset: u8,  // offset in the tide schedule, for optimization.
     pub score: i32,
     pub seen: u64,  // mask of seen vertices
 }
@@ -124,15 +125,17 @@ impl Ant {
         Ant {
             start: 0,
             tick: 0,
+            tick_offset: 0,
             edges: ArrayVec::new(),
             score: 0,
             seen: 0,
         }
     }
 
-    pub fn reset(&mut self, start: VertexId, tick: u16) {
+    pub fn reset(&mut self, start: VertexId, tick: u16, tick_offset: u8) {
         self.start = start;
         self.tick = tick + 1;  // Time to dock our start
+        self.tick_offset = tick_offset;
         self.edges.clear();
         assert!(start < 64);
         self.seen = 1u64 << start;
@@ -143,6 +146,7 @@ impl Ant {
         let edge = graph.edge(edge_id);
         let cost = edge.path(self.tick).cost;
         self.tick += cost + 1;  // +1 to dock
+        self.tick_offset = (self.tick % graph.tick_offsets as u16) as u8;
         self.score = self.compute_score(graph, /*simulate_to_end=*/false);
         if self.seen & (1u64 << edge.to) != 0 {
             assert!(edge.to == self.start,
@@ -300,10 +304,9 @@ impl VertexTrails {
         }
     }
 
-    pub fn cost(&self, tick: u16, edge_idx: usize) -> u16 {
-        let offset = (tick as usize) % self.costs.len();
+    pub fn cost(&self, tick_offset: u8, edge_idx: u8) -> u16 {
         unsafe {
-            *self.costs.get_unchecked(offset).get_unchecked(edge_idx)
+            *self.costs.get_unchecked(tick_offset as usize).get_unchecked(edge_idx as usize)
         }
     }
 
@@ -372,8 +375,8 @@ impl Colony {
         let trail = &self.trails[vertex_id as usize];
         let vertex = &self.graph.vertex(vertex_id);
         let weights = trail.weights(tick).iter().enumerate().map(|(i, w)| {
-            let valid = ant.valid_option(trail.cost(tick, i), trail.goes_to[i],
-                                         &self.graph);
+            let valid = ant.valid_option(trail.cost(ant.tick_offset, i as u8),
+                                         trail.goes_to[i], &self.graph);
             w * ((valid as i32) as f32)
         });
         let rand_valid_option = |rng: &mut SmallRng| -> Option<EdgeId> {
@@ -392,7 +395,8 @@ impl Colony {
             let idx = weights.enumerate()
                 .max_by(|(_, w1), (_, w2)| w1.partial_cmp(w2).unwrap_or(Ordering::Equal))
                 .map(|(idx, _)| idx).unwrap();
-            if ant.valid_option(trail.cost(tick, idx), trail.goes_to[idx], &self.graph) {
+            if ant.valid_option(trail.cost(ant.tick_offset, idx as u8),
+                                trail.goes_to[idx], &self.graph) {
                 Some(vertex.edges[idx])
             } else {
                 rand_valid_option(&mut self.rng)
@@ -407,7 +411,7 @@ impl Colony {
     fn construct_solution(&mut self) -> Ant {
         let mut ant = Ant::new();
         let start = self.rng.gen_range(0..self.graph.vertices.len());
-        ant.reset(start as VertexId, self.graph.start_tick);
+        ant.reset(start as VertexId, self.graph.start_tick, 0);
         while let Some(edge_id) = self.sample_option(&ant) {
             let from = self.graph.edge(edge_id).from;
             let edge_idx = self.graph.vertex(from).edges.iter().position(|&e| e == edge_id).unwrap();
@@ -453,7 +457,7 @@ impl Colony {
 impl Solution {
     pub fn from_ant(ant: &Ant, graph: &Graph) -> Self {
         let mut repeat_ant = Ant::new();
-        repeat_ant.reset(ant.start, graph.start_tick);
+        repeat_ant.reset(ant.start, graph.start_tick, 0);
         let mut paths = Vec::new();
         for edge_id in &ant.edges {
             let path_id = graph.edge(*edge_id).path(repeat_ant.tick).path;
