@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::iter;
 use priority_queue::PriorityQueue;
 
@@ -112,9 +112,9 @@ pub struct State {
     wait: u8,
 }
 
-type CameFrom = HashMap<State, State>;
-type CostSoFar = HashMap<State, u16>;
-type Targets = HashSet<Pos>;
+type CameFrom = FxHashMap<State, State>;
+type CostSoFar = FxHashMap<State, u16>;
+type Targets = FxHashSet<Pos>;
 
 fn heuristic(src: &Pos, targets: &Targets) -> u16 {
     targets.iter().map(|target| chebyshev_distance(src, target)).min().unwrap()
@@ -137,8 +137,8 @@ impl Pathfinder {
     pub fn new() -> Self {
         Pathfinder {
             grid: Grid::new(),
-            came_from: CameFrom::new(),
-            cost_so_far: CostSoFar::new(),
+            came_from: CameFrom::default(),
+            cost_so_far: CostSoFar::default(),
         }
     }
 
@@ -222,7 +222,7 @@ impl Pathfinder {
     pub fn shortest_path(
         &mut self, start: &Pos, target: &Pos, tick: u16
         ) -> Option<Path> {
-        let targets = Targets::from([*target]);
+        let targets = Targets::from_iter([*target]);
         if let Some(goal) = self.a_star_search(
             start, &targets, tick, /*stop_on_first=*/true) {
             self.reconstruct_path(start, &goal)
@@ -234,7 +234,7 @@ impl Pathfinder {
     pub fn distance(
         &mut self, start: &Pos, target: &Pos, tick: u16
         ) -> Option<u16> {
-        let targets = Targets::from([*target]);
+        let targets = Targets::from_iter([*target]);
         if let Some(goal) = self.a_star_search(
             start, &targets, tick, /*stop_on_first=*/true) {
             let state = State { position: goal, wait: 0 };
@@ -259,8 +259,8 @@ impl Pathfinder {
 
     pub fn paths_to_all_targets(
         &mut self, start: &Pos, targets: &Targets, tick: u16
-        ) -> HashMap<Pos, Path> {
-        let mut out = HashMap::new();
+        ) -> FxHashMap<Pos, Path> {
+        let mut out = FxHashMap::default();
         self.a_star_search(start, targets, tick, /*stop_on_first=*/false);
         for target in targets {
             if let Some(path) = self.reconstruct_path(start, target) {
@@ -274,8 +274,8 @@ impl Pathfinder {
     // possible tick offset we start at.
     pub fn paths_to_all_targets_by_offset(
         &mut self, start: &Pos, targets: &Targets, tick: u16
-        ) -> HashMap<Pos, Vec<Path>> {
-        let mut out = HashMap::new();
+        ) -> FxHashMap<Pos, Vec<Path>> {
+        let mut out = FxHashMap::default();
         for offset in 0..self.grid.tide_schedule.len() {
             let tick = tick + (offset as u16);
             let all_paths = self.paths_to_all_targets(start, targets, tick);
