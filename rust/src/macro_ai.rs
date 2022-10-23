@@ -1,6 +1,7 @@
 use log::{debug, info};
 use serde_json::{Value};
 use std::fs;
+use std::time::{Instant};
 
 use crate::ant_colony_optimization::{Colony, HyperParams, Solution};
 use crate::game_interface::{GameTick};
@@ -30,6 +31,7 @@ impl Macro {
     }
 
     pub fn init(&mut self, game_tick: &GameTick) {
+        let macro_start = Instant::now();
         let schedule: Vec<u8> = game_tick.tide_schedule.iter().map(|&e| e as u8).collect();
         self.pathfinder.grid.init(&game_tick.map, &schedule, game_tick.current_tick);
 
@@ -38,7 +40,9 @@ impl Macro {
         info!("{game_tick:?}");
         info!("--- TICK DUMP END ---");
 
+        let graph_start = Instant::now();
         let graph = Graph::new(&mut self.pathfinder, game_tick);
+        info!("Graph was built in {:?}", graph_start.elapsed());
         let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
             info!("[MACRO] Loading hyperparams from hyperparams.json.");
             let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
@@ -59,7 +63,9 @@ impl Macro {
         };
         info!("[MACRO] Hyperparams: {hyperparams:?}");
         let mut colony = Colony::new(graph, hyperparams, /*seed=*/42);
+        let colony_start = Instant::now();
         self.solution = Some(colony.run());
+        info!("Colony solution was found in {:?}", colony_start.elapsed());
         self.solution_idx = 0;
         info!("[MACRO] Solution found has a score of {score}",
               score = self.solution.as_ref().unwrap().score);
@@ -69,6 +75,7 @@ impl Macro {
             info!("[MACRO]   go to {goal:?} in {cost:?} steps (+1 dock)",
                   goal = path.goal, cost = path.cost);
         }
+        info!("Macro took {:?}", macro_start.elapsed());
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {

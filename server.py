@@ -288,7 +288,14 @@ async def handler(websocket):
       if not is_sweep:
         print("Started new game.")
       if game_index is None:
-        game = Game(seen_games.GAME1)
+        if any(arg.startswith('--gameid=') for arg in sys.argv):
+          arg = next(arg for arg in sys.argv if arg.startswith('--gameid='))
+          _, game_id = arg.split('=')
+          game_id = int(game_id)
+          with open(f'games/{game_id}.json', 'r') as f:
+            game = Game(Tick.from_dict(json.load(f)))
+        else:
+          game = Game(seen_games.GAME1)
       else:
         game = Game(all_games[game_index])
       if not fast: game.show()

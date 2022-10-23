@@ -1,15 +1,11 @@
 // TODOs
-// [x] Snapshot graph & pheromone info per step
-// [x] Visualize graph & pheromones -- looks correct?
-// [x] Manually hyperparam tune & get improved score
-// [x] Mine X real old games from logs
-// [x] Make eval setup, give score distribution on X games
-// [x] Load hyperparams from file
-// [x] Integrate with vizier
-// [x] Profile to speed up sweeping
-// [x] Run a couple times online
+// [x] Add timing info logging
+// [x] Debug game #2614 -- can reproduce timeout locally?
+// [ ] Optimize to have a safer first tick
+// [ ] Re-create greedy bot to get eval comparison
 // [ ] Add more sweepable hyperparameters/features
 use log::info;
+use std::time::{Instant};
 use thiserror::Error;
 
 use crate::game_interface::{Action, GameTick};
@@ -51,6 +47,7 @@ impl Bot {
     ///
     /// This is where the magic happens, it's random but I bet you can do better ;)
     pub fn get_next_move(&mut self, game_tick: &GameTick) -> Result<Action, Error> {
+        let start = Instant::now();
         info!("Tick {current}/{total}, pos: {pos:?}",
               current = game_tick.current_tick,
               total = game_tick.total_ticks,
@@ -61,7 +58,9 @@ impl Bot {
         }
 
         self.ai_macro.assign_state(&mut self.ai_micro, game_tick);
-        Ok(self.ai_micro.get_move(game_tick))
+        let game_move = self.ai_micro.get_move(game_tick);
+        info!("Tick overall time: {:?}", start.elapsed());
+        Ok(game_move)
     }
 
     pub fn is_done(&self, game_tick: &GameTick) -> bool {
