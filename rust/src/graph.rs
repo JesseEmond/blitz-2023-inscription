@@ -5,15 +5,15 @@ use std::collections::{HashSet};
 use crate::game_interface::{GameTick};
 use crate::pathfinding::{Path, Pathfinder, Pos};
 
-pub const MAX_TICK_OFFSETS: usize = 16;
-pub const MAX_VERTICES: usize = 16;
+pub const MAX_TICK_OFFSETS: usize = 32;
+pub const MAX_VERTICES: usize = 32;
 // Because it's a complete graph.
 pub const MAX_VERTEX_EDGES: usize = MAX_VERTICES - 1;
 // Because it's a complete graph.
 pub const MAX_EDGES: usize = MAX_VERTEX_EDGES * MAX_VERTICES;
 
 type Vertices = ArrayVec<Vertex, MAX_VERTICES>;
-type Edges = ArrayVec<Edge, 256>;  // note: 240 not supported
+type Edges = ArrayVec<Edge, 1024>;  // note: MAX_EDGES != power of 2 not supported
 type PathPtrs = ArrayVec<PathPtr, MAX_TICK_OFFSETS>;
 
 pub type VertexId = u8;
@@ -85,10 +85,10 @@ impl Graph {
         let tick = game_tick.current_tick as u16;
         let all_ports: Vec<Pos> = game_tick.map.ports.iter().map(
             Pos::from_position).collect();
-        let mut vertices: Vertices = ArrayVec::from_iter(all_ports.iter().map(Vertex::new));
-        assert!(vertices.len() <= MAX_VERTICES,
+        assert!(all_ports.len() <= MAX_VERTICES,
                 "Too many vertices to store in-line. {vertices}",
-                vertices = vertices.len());
+                vertices = all_ports.len());
+        let mut vertices: Vertices = ArrayVec::from_iter(all_ports.iter().map(Vertex::new));
         let mut edges: Edges = ArrayVec::new();
         let mut paths: Vec<Path> = Vec::new();
         for (source_idx, port) in all_ports.iter().enumerate() {
