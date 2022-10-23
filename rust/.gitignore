@@ -8,3 +8,5 @@ Cargo.lock
 
 perf.data
 flame.svg
+flamegraph.svg
+callgrind.*
