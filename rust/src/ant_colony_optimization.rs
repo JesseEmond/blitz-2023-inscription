@@ -293,7 +293,7 @@ impl VertexTrails {
     pub fn update_weights(&mut self, option_idx: usize) {
         for offset in 0..self.offset_trail_weights.len() {
             let tau = self.pheromones[option_idx];
-            self.offset_trail_weights[offset][option_idx] = tau * self.eta_pow(option_idx, offset as u16);
+            self.offset_trail_weights[offset][option_idx] = tau * self.eta_pow(offset as u8, option_idx as u8);
         }
     }
 
@@ -310,9 +310,10 @@ impl VertexTrails {
         }
     }
 
-    fn eta_pow(&self, option_idx: usize, tick: u16) -> f32 {
-        let offset = (tick as usize) % self.eta_pows.len();
-        self.eta_pows[offset][option_idx]
+    fn eta_pow(&self, tick_offset: u8, edge_idx: u8) -> f32 {
+        unsafe {
+            *self.eta_pows.get_unchecked(tick_offset as usize).get_unchecked(edge_idx as usize)
+        }
     }
 }
 
