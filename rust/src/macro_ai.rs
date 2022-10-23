@@ -49,16 +49,15 @@ impl Macro {
             serde_json::from_value(parsed).expect("invalid hyperparams")
         } else {
             info!("[MACRO] Using default params.");
-            // After RANDOM 13 rounds 2 suggestions, 5 suggestions/round
-            // Measurement(metrics={'maximize_score': Metric(value=3059.909090909091, std=None)}, elapsed_secs=0.0, steps=0) params: ParameterDict(_items={'iterations': 342.0, 'ants': 461.0, 'evaporation_rate': 0.591452311949127, 'exploitation_probability': 0.07706219963475536, 'pheromone_trail_power': 4.728800687880105, 'heuristic_power': 3.3351427312956146, 'base_pheromones': 0.7635218746185567, 'local_evaporation_rate': 0.4955295476638974})
+            // Point(hyperparams=Hyperparams(iterations=464, ants=63, evaporation_rate=0.7800131108465345, exploitation_probability=0.3642226425600267, heuristic_power=2.5583485993720037, base_pheromones=2.0097671658359686, local_evaporation_rate=0.7523178610770483), score=3078.174695652174)
             HyperParams {
-                iterations: 342,
-                ants: 461,
-                evaporation_rate: 0.6,
-                exploitation_probability: 0.077,
-                heuristic_power: 3.34,
-                base_pheromones: 0.7635,
-                local_evaporation_rate: 0.50,
+                iterations: 464,
+                ants: 63,
+                evaporation_rate: 0.7800131108465345,
+                exploitation_probability: 0.3642226425600267,
+                heuristic_power: 2.5583485993720037,
+                base_pheromones: 2.0097671658359686,
+                local_evaporation_rate: 0.7523178610770483
             }
         };
         info!("[MACRO] Hyperparams: {hyperparams:?}");

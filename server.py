@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import asyncio
+import hyperparams
 import glob
 import json
 import os
@@ -8,8 +9,6 @@ import sys
 import subprocess
 import time
 import websockets
-from dataclasses import dataclass
-from dataclasses_json import dataclass_json
 from typing import List
 from vizier.service import clients
 from vizier.service import pyvizier as vz
@@ -19,26 +18,12 @@ from game_message import Action, Anchor, Dock, Position, Sail, Spawn, Tick, dire
 import seen_games
 
 
-@dataclass_json
-@dataclass
-class Hyperparams:
-  iterations: int
-  ants: int
-  evaporation_rate: float
-  exploitation_probability: float
-  pheromone_trail_power: float
-  heuristic_power: float
-  base_pheromones: float
-  local_evaporation_rate: float
-
-
 def vizier_problem_statement() -> vz.ProblemStatement:
   problem = vz.ProblemStatement()
   problem.search_space.root.add_int_param('iterations', 1, 500)
   problem.search_space.root.add_int_param('ants', 10, 600)
   problem.search_space.root.add_float_param('evaporation_rate', 0.3, 0.8)
   problem.search_space.root.add_float_param('exploitation_probability', 0.0, 0.4)
-  problem.search_space.root.add_float_param('pheromone_trail_power', 1.0, 7.0)
   problem.search_space.root.add_float_param('heuristic_power', 1.0, 5.0)
   problem.search_space.root.add_float_param('base_pheromones', 0.1, 5.0)
   problem.search_space.root.add_float_param('local_evaporation_rate', 0.3, 0.8)
@@ -48,14 +33,13 @@ def vizier_problem_statement() -> vz.ProblemStatement:
   return problem
 
 
-def from_suggestion(suggestion) -> Hyperparams:
+def from_suggestion(suggestion) -> hyperparams.Hyperparams:
   params = suggestion.parameters
-  return Hyperparams(
+  return hyperparams.Hyperparams(
       iterations=int(params['iterations']),
       ants=int(params['ants']),
       evaporation_rate=params['evaporation_rate'],
       exploitation_probability=params['exploitation_probability'],
-      pheromone_trail_power=params['pheromone_trail_power'],
       heuristic_power=params['heuristic_power'],
       base_pheromones=params['base_pheromones'],
       local_evaporation_rate=params['local_evaporation_rate'],
@@ -208,7 +192,7 @@ game_scores = []
 client_process = None
 
 study_config = vz.StudyConfig.from_problem(vizier_problem_statement())
-study_config.algorithm = vz.Algorithm.QUASI_RANDOM_SEARCH
+study_config.algorithm = vz.Algorithm.RANDOM_SEARCH
 
 service = vizier_service.DefaultVizierService()
 clients.environment_variables.service_endpoint = service.endpoint
@@ -341,6 +325,8 @@ async def handler(websocket):
               avg_score = sum(game_scores) / len(game_scores)
               max_score = max(game_scores)
               metric = avg_score + max_score / 1000
+              hyperparams = from_suggestion(suggestions[suggestion_idx])
+              print(f'[SCORE]{metric} {json.dumps(hyperparams.to_dict())}')
               measurement = vz.Measurement({'maximize_score': metric})
               suggestions[suggestion_idx].complete(measurement)
               for optimal in study_client.optimal_trials():

@@ -1,6 +1,6 @@
 import dataclasses
-import networkx as nx
 import matplotlib.pyplot as plt
+import networkx as nx
 import sys
 from typing import List, Tuple
 

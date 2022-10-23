@@ -4,4 +4,4 @@ __pycache__
 devnull.zip
 access_token.priv
 games/
-./hyperparams.json
+hyperparams.json
