@@ -425,6 +425,7 @@ impl Colony {
             ant.visit(edge_id, &self.graph);
         }
         ant.finalize_path(&self.graph);
+        // TODO: should only do local trail update here, after finalizing?
         ant
     }
     

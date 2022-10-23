@@ -135,27 +135,30 @@ G = nx.DiGraph()
 for edge in graph.edges:
   G.add_edge(edge.from_, edge.to)
 
+fig, axs = plt.subplots(3, 2)
+plt.get_current_fig_manager().window.showMaximized()
 for i in range(len(local_ants)):
   local_ant = local_ants[i]
   global_ant = global_ants[i]
   print(f"Tick #{i}")
   print(f"Local best: {local_ant.score}")
   print(f"Global best: {global_ant.score}")
-  fig, axs = plt.subplots(3, 2)
 
   # Show the local & global ants
   edge_color = [(0, 1, 0) if e in global_ant.edges else (0, 0, 1) if e in local_ant.edges else (0, 0, 0, 0)
                 for e in range(len(graph.edges))]
   node_color = ['green' if v == global_ant.start else 'blue' if v == local_ant.start else 'gray'
                 for v in range(len(graph.vertices))]
+  axs[0,0].clear()
   nx.draw_networkx(G, pos=pos, ax=axs[0,0], edge_color=edge_color, node_color=node_color, with_labels=False)
-  axs[0,0].set_title("Local(blue)/Global(green) Best Ants")
+  axs[0,0].set_title(f"Local(blue)/Global(green) Best Ants (iteration #{i})")
   axs[0,0].axis('off')
 
   # Show the pheromones
   edge_color = [(1, 0, 0, (p - pheromone_min) / (pheromone_max - pheromone_min)) for p in pheromones[i]]
+  axs[0,1].clear()
   nx.draw_networkx(G, pos=pos, ax=axs[0,1], edge_color=edge_color, with_labels=False)
-  axs[0,1].set_title("Pheromones")
+  axs[0,1].set_title(f"Pheromones (iteration #{i})")
   axs[0,1].axis('off')
 
   # Show the heuristics min
@@ -164,20 +167,23 @@ for i in range(len(local_ants)):
 
   # Show the heuristics max
   edge_color = [(1, 0, 0, (max_ - heuristic_min) / (heuristic_max - heuristic_min)) for _, max_ in heuristics]
+  axs[1,0].clear()
   nx.draw_networkx(G, pos=pos, ax=axs[1,0], edge_color=edge_color, with_labels=False)
   axs[1,0].set_title("Distance Heuristics (max)")
   axs[1,0].axis('off')
 
   # Show the weights min
   edge_color = [(1, 0, 0, (min_ - weights_min) / (weights_max - weights_min)) for min_, _ in weights[i]]
+  axs[1,1].clear()
   nx.draw_networkx(G, pos=pos, ax=axs[1,1], edge_color=edge_color, with_labels=False)
-  axs[1,1].set_title("Sampling weights (min)")
+  axs[1,1].set_title(f"Sampling weights (min) (iteration #{i})")
   axs[1,1].axis('off')
 
   # Show the weights max
   edge_color = [(1, 0, 0, (max_ - weights_min) / (weights_max - weights_min)) for _, max_ in weights[i]]
+  axs[2,1].clear()
   nx.draw_networkx(G, pos=pos, ax=axs[2,1], edge_color=edge_color, with_labels=False)
-  axs[2,1].set_title("Sampling weights (max)")
+  axs[2,1].set_title(f"Sampling weights (max) (iteration #{i})")
   axs[2,1].axis('off')
 
   # Show the ant paths
@@ -189,9 +195,9 @@ for i in range(len(local_ants)):
   num_node_visits = [count_node_visits(v) for v in range(len(graph.vertices))]
   edge_color = [(0, 0, 1, (n - min(num_edge_visits)) / max(max(num_edge_visits) - min(num_edge_visits), 1)) for n in num_edge_visits]
   node_color = [(0, 0, 1, (n - min(num_node_visits)) / max(max(num_node_visits) - min(num_node_visits), 1)) for n in num_node_visits]
+  axs[2,0].clear()
   nx.draw_networkx(G, pos=pos, ax=axs[2,0], edge_color=edge_color, node_color=node_color, with_labels=False)
-  axs[2,0].set_title("Ant paths")
+  axs[2,0].set_title(f"Ant paths (iteration #{i})")
   axs[2,0].axis('off')
 
-  plt.get_current_fig_manager().window.showMaximized()
-  plt.show()
+  plt.pause(0.1)
