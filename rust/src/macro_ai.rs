@@ -1,4 +1,4 @@
-use log::{debug, info};
+use log::{info, warn};
 use serde_json::{Value};
 use std::fs;
 use std::time::{Instant};
@@ -7,7 +7,7 @@ use crate::ant_colony_optimization::{Colony, HyperParams, Solution};
 use crate::game_interface::{GameTick, eval_score};
 use crate::graph::{Graph, VertexId};
 use crate::micro_ai::{Micro, State};
-use crate::pathfinding::{Pathfinder, Pos};
+use crate::pathfinding::{Pathfinder};
 
 pub struct Macro {
     pathfinder: Pathfinder,
@@ -44,8 +44,10 @@ impl Macro {
         let graph = Graph::new(&mut self.pathfinder, game_tick);
         info!("Graph was built in {:?}", graph_start.elapsed());
 
+        let greedy_start = Instant::now();
         let greedy_sln = greedy_bot(&graph);
         info!("A greedy bot would get us a score of {score}", score = greedy_sln.score);
+        info!("Greedy solution found in {:?}", greedy_start.elapsed());
 
         let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
             info!("[MACRO] Loading hyperparams from hyperparams.json.");
@@ -72,6 +74,11 @@ impl Macro {
         self.solution_idx = 0;
         info!("[MACRO] Solution found has a score of {score}",
               score = self.solution.as_ref().unwrap().score);
+        if greedy_sln.score > self.solution.as_ref().unwrap().score {
+            warn!("A greedy solution is better... {} > {}, using it.",
+                  greedy_sln.score, self.solution.as_ref().unwrap().score);
+            self.solution = Some(greedy_sln);
+        }
         info!("[MACRO] Our plan is the following: ");
         info!("[MACRO]   spawn on {spawn:?}", spawn = self.solution.as_ref().unwrap().spawn);
         for path in &self.solution.as_ref().unwrap().paths {
@@ -93,21 +100,20 @@ impl Macro {
             let next_port_path = self.solution.as_ref().unwrap().paths[self.solution_idx].clone();
             info!("[MACRO] Will go to this port next: {port:?}, in {steps} steps.",
                   port = next_port_path.goal, steps = next_port_path.cost);
-            debug!("[MACRO] Path: {path:?}", path = next_port_path.steps);
+            info!("[MACRO] Path: {path:?}", path = next_port_path.steps);
             micro.state = State::Following {
                 path: next_port_path,
                 path_index: 0,
             };
-        } else if let State::Docking = micro.state {
-            let current = Pos::from_position(&game_tick.current_location.unwrap());
+        } else if let State::Docking { port } = micro.state {
             let solution = self.solution.as_ref().unwrap();
             assert!(self.solution_idx < solution.paths.len());
-            let was_spawn = current == solution.spawn;
+            let was_spawn = port == solution.spawn;
             if !was_spawn {  // if this was the spawn, we want to stay on step 0
                 self.solution_idx += 1;
             }
             let ports_left = solution.paths.len() - self.solution_idx;
-            info!("[MACRO] Docked port: {current:?}, {ports_left} ports left in solution.");
+            info!("[MACRO] Docked port: {port:?}, {ports_left} ports left in solution.");
         }
         // else, no-op, micro is no a task.
     }
@@ -118,7 +124,7 @@ pub fn greedy_bot(graph: &Graph) -> Solution {
     for start_vertex_id in 0..graph.vertices.len() {
         let start_vertex_id = start_vertex_id as VertexId;
         let mut seen = 1u64 << start_vertex_id;
-        let mut tick = graph.start_tick;
+        let mut tick = graph.start_tick + 1;  // time to dock spawn
         let mut current_id = start_vertex_id;
         let mut paths = Vec::new();
 
@@ -139,8 +145,8 @@ pub fn greedy_bot(graph: &Graph) -> Solution {
             let edge = graph.edge(closest);
             current_id = edge.to;
             seen |= 1u64 << current_id;
-            tick += edge.path(tick).cost + 1;
             paths.push(edge.path(tick).path);
+            tick += edge.path(tick).cost + 1;
             let visits = seen.count_ones();
             // First compute score if we stay here until the end of the game
             let score = eval_score(visits, graph.max_ticks, /*looped=*/false);
@@ -176,5 +182,15 @@ pub fn greedy_bot(graph: &Graph) -> Solution {
             }
         }
     }
-    best_sln.unwrap()
+    let best_sln = best_sln.unwrap();
+    info!("Greedy bot summary");
+    let mut tick = graph.start_tick;
+    info!("Will spawn on {:?}, start moving on tick {}", best_sln.spawn, tick);
+    for path in &best_sln.paths {
+        tick += path.cost + 1;
+        info!("Will go to {:?} in {} steps, then dock. Next starts at tick {}",
+              path.goal, path.cost, tick);
+    }
+    info!("Final dock on tick {}, score of {}", tick - 1, best_sln.score);
+    best_sln
 }

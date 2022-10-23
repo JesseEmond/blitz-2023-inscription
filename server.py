@@ -244,9 +244,13 @@ async def run():
   if is_eval:
     for path in glob.glob('games/*.json'):
       game_id = int(re.match(r'games/(\d+).json', path).group(1))
-      game_ids.append(game_id)
       with open(path, 'r') as f:
-        all_games.append(Tick.from_dict(json.load(f)))
+        tick = Tick.from_dict(json.load(f))
+        if len(tick.map.ports) >= 20:
+          all_games.append(tick)
+          game_ids.append(game_id)
+        else:
+          print(f'Skipping #{game_id}, only {len(tick.map.ports)} ports')
     game_index = 0
     print(f'{len(all_games)} games in our dev set')
 
@@ -290,10 +294,14 @@ async def handler(websocket):
               f"{game.tick.map.rows}x{game.tick.map.columns})")
       if not fast: game.show()
       await websocket.send(json.dumps(game.tick.to_dict()))
+      tick_start = time.time()
     elif data.get('type') == 'COMMAND':
       if not game:
         print("Game not started.")
         continue
+      elapsed = time.time() - tick_start
+      if elapsed > 0.95:
+        print(f"[!WARNING!] TICK TOO SLOW! {elapsed * 1000}ms")
       data_action = data.get('action', {})
       kind = data_action.get('kind')
       if not kind:
@@ -348,6 +356,7 @@ async def handler(websocket):
             game_scores.clear()
           reset_game = True
       await websocket.send(json.dumps(game.tick.to_dict()))
+      tick_start = time.time()
       if reset_game:
         await websocket.close()
         start_game()

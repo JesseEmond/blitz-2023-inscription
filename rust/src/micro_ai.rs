@@ -32,7 +32,7 @@ pub enum State {
         // Index to the move we just made.
         path_index: usize,
     },
-    Docking,
+    Docking { port: Pos },
 }
 
 fn state_short(state: &State) -> String {
@@ -42,7 +42,7 @@ fn state_short(state: &State) -> String {
         State::Following { path, path_index } => {
             format!("Following (goal={goal:?}, idx={path_index}", goal = path.goal)
         },
-        State::Docking => "Docking".to_string(),
+        State::Docking { port } => format!("Docking ({port:?})"),
     }
 }
 
@@ -62,12 +62,15 @@ impl Micro {
                 State::Waiting
             }
             State::Spawning { position } => {
-                let position = position.to_position();
-                action = Some(Action::Spawn { position });
-                State::Docking
+                action = Some(Action::Spawn { position: position.to_position() });
+                State::Docking { port: *position }
             },
-            State::Docking => {
+            State::Docking { port } => {
                 action = Some(Action::Dock);
+                let current = Pos::from_position(&game_tick.current_location.unwrap());
+                assert!(current == *port,
+                        "Did not dock the expected port! pos:{:?} port:{:?}",
+                        current, *port);
                 State::Waiting
             },
             State::Following { path, path_index } => {
@@ -77,23 +80,21 @@ impl Micro {
                 assert!(path_index < &path.steps.len(),
                         "Should never get past the end of our path!");
                 let expected = &path.steps[*path_index];
-                if *expected != current {
-                    panic!(concat!(
+                assert!(*expected == current,
+                        concat!(
                             "[!!!] Did not make the expected move to ",
                             "{expected:?} (current: {current:?}, ",
                             "path_idx: {path_index})."),
-                            expected = expected, current = current,
-                            path_index = path_index);
+                        expected = expected, current = current,
+                        path_index = path_index);
+                let target = path.steps[path_index + 1];
+                action = Some(moving_action(current, target));
+                if path_index + 2 == path.steps.len() {
+                    // Our next step will bring us on the last step of the path,
+                    // we're ready to dock.
+                    State::Docking { port: path.goal }
                 } else {
-                    let target = path.steps[path_index + 1];
-                    action = Some(moving_action(current, target));
-                    if target == path.goal {
-                        // Our next step will bring us on the last step of the path,
-                        // we're ready to dock.
-                        State::Docking
-                    } else {
-                        State::Following { path: path.clone(), path_index: path_index + 1 }
-                    }
+                    State::Following { path: path.clone(), path_index: path_index + 1 }
                 }
             },
         };
