@@ -101,15 +101,23 @@ pub struct Path {
     pub goal: Pos,
 }
 
-
 // TODO: optimizations to consider:
 // - https://www.redblobgames.com/pathfinding/a-star/implementation.html#optimize-integer-ids
 // - https://harablog.wordpress.com/2011/09/07/jump-point-search/
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
-pub struct State {
-    position: Pos,
-    wait: u8,
+pub struct State(u32);
+
+impl State {
+    pub fn new(pos: Pos, wait: u8) -> Self {
+        State((pos.x as u32) << 16 | (pos.y as u32) << 8 | (wait as u32))
+    }
+    pub fn position(&self) -> Pos {
+        Pos { x: (self.0 >> 16) as u16, y: ((self.0 >> 8) & 0xff) as u16 }
+    }
+    pub fn wait(&self) -> u8 {
+        (self.0 & 0xff) as u8
+    }
 }
 
 type CameFrom = FxHashMap<State, State>;
@@ -143,14 +151,14 @@ impl Pathfinder {
     }
 
     fn reconstruct_path(&self, start: &Pos, goal: &Pos) -> Option<Path> {
-        let mut current = State { position: *goal, wait: 0 };
+        let mut current = State::new(*goal, 0);
         if !self.came_from.contains_key(&current) {
             return None;
         }
         let cost = *self.cost_so_far.get(&current).unwrap();
         let mut steps = Vec::new();
-        while current.position != *start || current.wait > 0 {
-            steps.push(current.position);
+        while current.position() != *start || current.wait() > 0 {
+            steps.push(current.position());
             current = *self.came_from.get(&current).unwrap();
         }
         steps.push(*start);
@@ -172,7 +180,7 @@ impl Pathfinder {
         // TODO: worth using a different data structure?
         // NOTE: Higher priority pops first.
         let mut frontier: PriorityQueue<State, i32> = PriorityQueue::new();
-        let start_state = State { position: *start, wait: 0 };
+        let start_state = State::new(*start, 0);
         frontier.push(start_state, 0);
         self.came_from.insert(start_state, start_state);
         self.cost_so_far.insert(start_state, 0);
@@ -182,9 +190,9 @@ impl Pathfinder {
             let cost = *self.cost_so_far.get(&current).unwrap();
             let current_tick = tick + cost;
 
-            if targets.contains(&current.position) {
-                targets.remove(&current.position);
-                first_goal = Some(current.position);
+            if targets.contains(&current.position()) {
+                targets.remove(&current.position());
+                first_goal = Some(current.position());
                 if stop_on_first {
                     break;
                 }
@@ -193,15 +201,15 @@ impl Pathfinder {
                 break;
             }
 
-            let neighbors = self.grid.neighbors(current.position, current_tick)
-                .map(|n| State { position: n, wait: 0 });
+            let neighbors = self.grid.neighbors(current.position(), current_tick)
+                .map(|n| State::new(n, 0));
             let wait_here = iter::once(
-                State { position: current.position, wait: current.wait + 1 });
+                State::new(current.position(), current.wait() + 1));
             // We must wait if we're stuck on ground
-            let forced_wait = !self.grid.navigable(&current.position,
+            let forced_wait = !self.grid.navigable(&current.position(),
                                                     current_tick);
             // No point in waiting longer than a full tide cycle.
-            let consider_wait = (current.wait as usize) < self.grid.tide_schedule.len();
+            let consider_wait = (current.wait() as usize) < self.grid.tide_schedule.len();
             let options = neighbors.filter(|_| !forced_wait)
                 .chain(wait_here.filter(|_| consider_wait || forced_wait));
 
@@ -210,7 +218,7 @@ impl Pathfinder {
                 let old_cost = self.cost_so_far.get(&next).cloned();
                 if old_cost.is_none() || new_cost < old_cost.unwrap() {
                     self.cost_so_far.insert(next, new_cost);
-                    let priority = new_cost + heuristic(&next.position, &targets);
+                    let priority = new_cost + heuristic(&next.position(), &targets);
                     frontier.push(next, -(priority as i32));
                     self.came_from.insert(next, current);
                 }
@@ -237,7 +245,7 @@ impl Pathfinder {
         let targets = Targets::from_iter([*target]);
         if let Some(goal) = self.a_star_search(
             start, &targets, tick, /*stop_on_first=*/true) {
-            let state = State { position: goal, wait: 0 };
+            let state = State::new(goal, 0);
             let cost = *self.cost_so_far.get(&state)
                 .expect("Found goal, but no cost set?");
             Some(cost)
