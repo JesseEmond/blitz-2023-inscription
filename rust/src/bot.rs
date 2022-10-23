@@ -65,6 +65,6 @@ impl Bot {
     }
 
     pub fn is_done(&self, game_tick: &GameTick) -> bool {
-        game_tick.is_over
+        game_tick.is_over || self.ai_macro.give_up
     }
 }

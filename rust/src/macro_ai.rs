@@ -1,4 +1,4 @@
-use log::{info, warn};
+use log::{error, info, warn};
 use serde_json::{Value};
 use std::fs;
 use std::time::{Instant};
@@ -13,6 +13,7 @@ pub struct Macro {
     pathfinder: Pathfinder,
     solution: Option<Solution>,
     solution_idx: usize,
+    pub give_up: bool,
 }
 
 impl Default for Macro {
@@ -27,6 +28,7 @@ impl Macro {
             pathfinder: Pathfinder::new(),
             solution: None,
             solution_idx: 0,
+            give_up: false,
         }
     }
 
@@ -39,6 +41,12 @@ impl Macro {
         info!("--- TICK DUMP BEGIN ---");
         info!("{game_tick:?}");
         info!("--- TICK DUMP END ---");
+
+        if game_tick.map.ports.len() < 20 {
+            error!("Only {} ports!? Why would I bother!", game_tick.map.ports.len());
+            self.give_up = true;
+            return;
+        }
 
         let graph_start = Instant::now();
         let graph = Graph::new(&mut self.pathfinder, game_tick);
@@ -89,6 +97,9 @@ impl Macro {
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {
+        if self.give_up {
+            return
+        }
         if game_tick.spawn_location.is_none() {
             let spawn = self.solution.as_ref().unwrap().spawn;
             info!("[MACRO] Will spawn on {spawn:?}");
