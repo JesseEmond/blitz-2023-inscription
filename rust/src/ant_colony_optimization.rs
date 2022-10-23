@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use log::{debug, info};
+use log::{debug};
 use serde::{Deserialize};
 use std::cmp::Ordering;
 use std::iter;
@@ -335,13 +335,13 @@ impl Colony {
         debug_log_graph(&self.graph);
         debug_log_heuristics(&self.graph);
         for iter in 0..self.hyperparams.iterations {
-            info!("ACO iteration #{iter}/{total}", iter = iter + 1,
+            debug!("ACO iteration #{iter}/{total}", iter = iter + 1,
                    total = self.hyperparams.iterations);
             debug_log_pheromones(self, iter);
             debug_log_scores(self, iter);
             self.run_iteration();
             let best_ant = self.global_best.as_ref().expect("No solution found...?");
-            info!("  best global score: {best}", best = best_ant.score);
+            debug!("  best global score: {best}", best = best_ant.score);
         }
         let best_ant = self.global_best.as_ref().expect("No solution found...?");
         Solution::from_ant(best_ant, &self.graph)
@@ -349,7 +349,7 @@ impl Colony {
 
     fn run_iteration(&mut self) {
         self.construct_solutions();
-        // TODO: local search?
+        // Note: our path finalization logic is essentially a local search.
         self.update_trails();
     }
 
@@ -357,7 +357,7 @@ impl Colony {
         let ants: Vec<Ant> = iter::repeat(()).take(self.hyperparams.ants)
             .map(|_| self.construct_solution()).collect();
         let local_best = ants.iter().max_by_key(|ant| ant.score).cloned().unwrap();
-        info!("  local best score: {score}", score = local_best.score);
+        debug!("  local best score: {score}", score = local_best.score);
         debug_log_ant(&local_best, "[LOGGING_LOCAL_BEST_ANT]");
         for (i, ant) in ants.iter().enumerate() {
             debug_log_ant(ant, format!("[LOGGING_ANT]{i} ").as_str());
