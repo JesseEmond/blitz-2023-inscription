@@ -2,95 +2,49 @@ use arrayvec::ArrayVec;
 use log::{debug, info};
 use std::collections::{HashSet};
 
+use crate::challenge::{MAX_PORTS, MAX_TICK_OFFSETS};
 use crate::game_interface::{GameTick};
 use crate::pathfinding::{Path, Pathfinder, Pos};
 
-pub const MAX_TICK_OFFSETS: usize = 32;
-pub const MAX_VERTICES: usize = 32;
-// Because it's a complete graph.
-pub const MAX_VERTEX_EDGES: usize = MAX_VERTICES - 1;
-// Because it's a complete graph.
-pub const MAX_EDGES: usize = MAX_VERTEX_EDGES * MAX_VERTICES;
-
-type Vertices = ArrayVec<Vertex, MAX_VERTICES>;
-type Edges = ArrayVec<Edge, 1024>;  // note: MAX_EDGES != power of 2 not supported
-type PathPtrs = ArrayVec<PathPtr, MAX_TICK_OFFSETS>;
-
+pub type Cost = u8;
 pub type VertexId = u8;
-pub type EdgeId = u16;
-pub type PathId = u16;
 
-// Small container for path information, for optimization purposes since the
-// full list of paths take up a lot of space.
-#[derive(Clone, Debug, Copy)]
-pub struct PathPtr {
-    pub path: PathId,
-    pub cost: u16,
-}
-
-#[derive(Clone, Debug)]
-pub struct Edge {
-    pub from: VertexId,
-    pub to: VertexId,
-    pub paths: PathPtrs,
-}
-
-#[derive(Clone, Debug)]
-pub struct Vertex {
-    // TODO: change to fixed array of Options, ordered by vertex (so that it's
-    // O(1) to know which edge leads to what vertex)?
-    // TODO: remove edgeid and store edges here in-line?
-    pub edges: ArrayVec<EdgeId, MAX_VERTEX_EDGES>,
-    pub position: Pos,
-}
+type Adjacency = [[Cost; MAX_PORTS]; MAX_PORTS];
+type TickOffsetsAdjacency = Vec<Adjacency>;
+type Paths = Vec<Vec<Vec<Path>>>;
 
 #[derive(Clone, Debug)]
 pub struct Graph {
-    pub vertices: Vertices,
-    pub edges: Edges,
+    // adjacency[tick_offset][from][to]
+    pub adjacency: TickOffsetsAdjacency,
+    // paths[tick_offset][from][to]
+    pub paths: Paths,
     pub tick_offsets: usize,
+    pub ports: ArrayVec<Pos, MAX_PORTS>,
     // Tick where paths were computed. Offsets must be computed off of this.
     pub start_tick: u16,
     pub max_ticks: u16,
-    pub paths: Vec<Path>,
-}
-
-impl Edge {
-    pub fn new(from: VertexId, to: VertexId, paths: &[PathPtr]) -> Self {
-        Edge { from, to, paths: ArrayVec::from_iter(paths.iter().cloned()) }
-    }
-
-    pub fn path(&self, tick: u16) -> &PathPtr {
-        unsafe {
-            self.paths.get_unchecked((tick as usize) % self.paths.len())
-        }
-    }
-
-    pub fn cost(&self, tick: u16) -> u16 {
-        self.path(tick).cost
-    }
-}
-
-impl Vertex {
-    pub fn new(position: &Pos) -> Self {
-        Vertex { position: *position, edges: ArrayVec::new() }
-    }
 }
 
 impl Graph {
     pub fn new(pathfinder: &mut Pathfinder, game_tick: &GameTick) -> Self {
-        assert!(game_tick.tide_schedule.len() <= MAX_TICK_OFFSETS,
-            "Can't guarantee inline storage for tide schedule of {count} elements",
-            count = game_tick.tide_schedule.len());
         let tick = game_tick.current_tick as u16;
-        let all_ports: Vec<Pos> = game_tick.map.ports.iter().map(
-            Pos::from_position).collect();
-        assert!(all_ports.len() <= MAX_VERTICES,
-                "Too many vertices to store in-line. {vertices}",
-                vertices = all_ports.len());
-        let mut vertices: Vertices = ArrayVec::from_iter(all_ports.iter().map(Vertex::new));
-        let mut edges: Edges = ArrayVec::new();
-        let mut paths: Vec<Path> = Vec::new();
+        let tick_offsets = game_tick.tide_schedule.len();
+        assert!(tick_offsets <= MAX_TICK_OFFSETS,
+                "Bigger tick schedule that we support: {}. Update max.",
+                tick_offsets);
+        assert!(game_tick.map.ports.len() <= MAX_PORTS,
+                "More ports than we support: {}. Update max.",
+                game_tick.map.ports.len());
+        let all_ports: ArrayVec<Pos, MAX_PORTS> = ArrayVec::from_iter(
+            game_tick.map.ports.iter().map(Pos::from_position));
+        let mut adjacency: TickOffsetsAdjacency = vec![[[0; MAX_PORTS]; MAX_PORTS]];
+        let placeholder_path = Path {
+            steps: Vec::new(), cost: 0, goal: Pos { x: 0, y: 0 }
+        };
+        let mut paths: Paths = vec![vec![
+            vec![placeholder_path; all_ports.len()];
+            all_ports.len()]; tick_offsets];
         for (source_idx, port) in all_ports.iter().enumerate() {
             let mut targets = HashSet::from_iter(all_ports.iter().cloned());
             targets.remove(port);
@@ -101,66 +55,49 @@ impl Graph {
                           "options each). Here they are:"),
                    num_paths = all_offsets_paths.len(),
                    size = game_tick.tide_schedule.len());
-            for (target, offset_paths) in &all_offsets_paths {
-                let costs: Vec<u16> = offset_paths.iter().map(|path| path.cost).collect();
-                debug!("  to {target:?}, costs {costs:?}");
-                // Verify individual paths -- for debugging purposes only.
-                // for offset in 0..offset_paths.len() {
-                //     let dist = pathfinder.distance(port, target, tick + (offset as u16));
-                //     assert!(dist.unwrap() == costs[offset],
-                //             "from {:?} to {:?} get direct cost of {}, but computed {}",
-                //             port, target, dist.unwrap(), costs[offset]);
-                // }
-            }
-            for (target_idx, port) in all_ports.iter().enumerate() {
-                if let Some(edge_paths) = all_offsets_paths.get(port) {
-                    let edge_id = edges.len();
-                    let mut path_ptrs = PathPtrs::new();
-                    for path in edge_paths {
-                        let path_id = paths.len();
-                        // TODO: could re-use existing IDs for paths that are
-                        // the same on this edge.
-                        path_ptrs.push(PathPtr {
-                            path: path_id as PathId,
-                            cost: path.cost
-                        });
-                        paths.push(path.clone());
+            for (target_idx, target) in all_ports.iter().enumerate() {
+                if target_idx != source_idx {
+                    let offset_paths = all_offsets_paths.get(target)
+                        .expect("No path between 2 ports, won't score high -- skip.");
+                    for (offset, path) in offset_paths.iter().enumerate() {
+                        assert!(path.cost < 256, "Path cost too high for u8.");
+                        adjacency[offset][source_idx][target_idx] = path.cost as Cost;
+                        paths[offset][source_idx][target_idx] = path.clone();
+                        // Verify individual paths -- for debugging purposes only.
+                        // let dist = pathfinder.distance(port, target, tick + (offset as u16));
+                        // assert!(dist.unwrap() == path.cost,
+                        //         "from {:?} to {:?} get direct cost of {}, but computed {}",
+                        //         port, target, dist.unwrap(), path.cost);
                     }
-                    edges.push(Edge::new(source_idx as VertexId,
-                                         target_idx as VertexId,
-                                         &path_ptrs));
-                    vertices[source_idx as usize].edges.push(edge_id as EdgeId);
                 }
+                // For source_idx == target_idx (diagonal), leave the defaults
             }
         }
 
-        info!("Graph created: {num_vertices} vertices, {num_edges} edges.",
-              num_vertices = vertices.len(), num_edges = edges.len());
+        info!("Graph created: {} vertices", all_ports.len());
         Graph {
-            vertices,
-            edges,
-            tick_offsets: game_tick.tide_schedule.len(),
+            adjacency,
+            paths,
+            tick_offsets,
+            ports: all_ports,
             start_tick: tick + 1,  // time to spawn
             max_ticks: game_tick.total_ticks as u16,
-            paths,
         }
     }
 
-    #[inline]
-    pub fn edge(&self, edge_id: EdgeId) -> &Edge {
-        &self.edges[edge_id as usize]
+    pub fn cost(&self, tick_offset: u8, from: VertexId, to: VertexId) -> Cost {
+        self.adjacency[tick_offset as usize][from as usize][to as usize]
     }
 
-    #[inline]
-    pub fn vertex(&self, vertex_id: VertexId) -> &Vertex {
-        &self.vertices[vertex_id as usize]
+    pub fn others(&self, from: VertexId) -> impl Iterator<Item=VertexId> + '_ {
+        (0..self.ports.len()).map(|v| v as VertexId).filter(move |&v| v != from)
     }
 
-    pub fn vertex_edge_to(
-        &self, vertex_id: VertexId, to: VertexId
-        ) -> Option<EdgeId> {
-        self.vertex(vertex_id).edges.iter()
-            .filter(|&edge_id| self.edge(*edge_id).to == to)
-            .take(1).cloned().next()
+    pub fn path(&self, tick_offset: u8, from: VertexId, to: VertexId) -> &Path {
+        &self.paths[tick_offset as usize][from as usize][to as usize]
+    }
+
+    pub fn tick_offset(&self, tick: u16) -> u8 {
+        (tick % (self.tick_offsets as u16)) as u8
     }
 }

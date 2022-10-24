@@ -141,7 +141,7 @@ impl Macro {
 
 pub fn greedy_bot(graph: &Graph) -> Solution {
     let mut best_sln: Option<Solution> = None;
-    for start_vertex_id in 0..graph.vertices.len() {
+    for start_vertex_id in 0..graph.ports.len() {
         let start_vertex_id = start_vertex_id as VertexId;
         let mut seen = 1u64 << start_vertex_id;
         let mut tick = graph.start_tick + 1;  // time to dock spawn
@@ -149,24 +149,23 @@ pub fn greedy_bot(graph: &Graph) -> Solution {
         let mut paths = Vec::new();
 
         loop {
-            let vertex = graph.vertex(current_id);
-            let options = vertex.edges.iter().filter(|&edge_id| {
-                let edge = graph.edge(*edge_id);
-                let mask = 1u64 << edge.to;
+            let tick_offset = graph.tick_offset(tick);
+            let options = graph.others(current_id).filter(|&other_id| {
+                let mask = 1u64 << other_id;
                 let unseen = seen & mask == 0;
-                let have_time = tick + edge.path(tick).cost + 1 < graph.max_ticks;
+                let cost = graph.cost(tick_offset, current_id, other_id) as u16;
+                let have_time = tick + cost + 1 < graph.max_ticks;
                 unseen && have_time
             });
-            let closest = match options.min_by_key(|&edge_id| {
-                graph.edge(*edge_id).path(tick).cost }) {
-                Some(&edge_id) => edge_id,
+            let closest = match options.min_by_key(
+                |&option_id| graph.cost(tick_offset, current_id, option_id)) {
+                Some(option_id) => option_id,
                 None => break,
             };
-            let edge = graph.edge(closest);
-            current_id = edge.to;
+            paths.push((tick_offset, current_id, closest));
+            tick += (graph.cost(tick_offset, current_id, closest) + 1) as u16;
+            current_id = closest;
             seen |= 1u64 << current_id;
-            paths.push(edge.path(tick).path);
-            tick += edge.path(tick).cost + 1;
             let visits = seen.count_ones();
             // First compute score if we stay here until the end of the game
             let score = eval_score(visits, graph.max_ticks, /*looped=*/false);
@@ -177,26 +176,29 @@ pub fn greedy_bot(graph: &Graph) -> Solution {
             if score > best_score {
                 best_sln = Some(Solution {
                     score,
-                    spawn: graph.vertex(start_vertex_id).position,
-                    paths: paths.iter().map(|&path_id| graph.paths[path_id as usize].clone()).collect(),
+                    spawn: graph.ports[start_vertex_id as usize],
+                    paths: paths.iter().map(
+                        |&(tick_offset, from, to)| graph.path(tick_offset, from, to).clone())
+                        .collect(),
                 });
             }
 
             // Consider going home from there, if we have time.
-            let home_edge_id = graph.vertex_edge_to(
-                current_id, start_vertex_id).expect("No way home?");
-            let home_edge = graph.edge(home_edge_id);
-            if tick + home_edge.path(tick).cost < graph.max_ticks {
+            let tick_offset = graph.tick_offset(tick);
+            let home_cost = graph.cost(tick_offset, current_id, start_vertex_id) as u16;
+            if tick + home_cost < graph.max_ticks {
                 let home_score = eval_score(visits + 1,
-                                            tick + home_edge.path(tick).cost,
+                                            tick + home_cost,
                                             /*looped=*/true);
                 if home_score > best_score {
                     let mut paths = paths.clone();
-                    paths.push(home_edge.path(tick).path);
+                    paths.push((tick_offset, current_id, start_vertex_id));
                     best_sln = Some(Solution {
                         score: home_score,
-                        spawn: graph.vertex(start_vertex_id).position,
-                        paths: paths.iter().map(|&path_id| graph.paths[path_id as usize].clone()).collect(),
+                        spawn: graph.ports[start_vertex_id as usize],
+                        paths: paths.iter().map(
+                            |&(tick_offset, from, to)| graph.path(tick_offset, from, to).clone())
+                            .collect(),
                     });
                 }
             }

@@ -9,15 +9,13 @@
 // The final TSP solution starting at '1' is the g(S, i) for the 'i' that gives
 // the smallest distance.
 
-use crate::challenge::{Solution};
+use crate::challenge::{Solution, MAX_PORTS};
 use crate::graph::{Graph, VertexId};
 use crate::pathfinding::{Pos};
 
-// We create a 2**MAX_CITIES sized array, so we need some limits.
-const MAX_CITIES: usize = 20;
 // Size needed for an array indexed by masks.
 // We exclude the currently search city, so num_cities - 1.
-const NUM_MASKS: usize = 1 << (MAX_CITIES - 1);
+const NUM_MASKS: usize = 1 << (MAX_PORTS - 1);
 
 // Mask of whether a city 'i' was seen (bit (1 << i)).
 // Must set the lower bits, since this is used directly as an index in an array.
@@ -30,14 +28,14 @@ struct Tour {
 
 pub fn held_karp(graph: &Graph) -> Solution {
     let mut held_karp = HeldKarp::new();
-    (0..graph.vertices.len())
+    (0..graph.ports.len())
         .map(|start| held_karp.traveling_salesman(graph, start as VertexId))
         .min_by_key(|tour| tour.cost).unwrap().to_solution()
 }
 
 type Cost = u16;
 // Costs g(S, e) for a fixed 'S', for possible values of 'e'.
-type SubsetCosts = [Cost; MAX_CITIES];
+type SubsetCosts = [Cost; MAX_PORTS];
 
 struct HeldKarp {
     // This is the g(S, e) that gives us, for a given 'S', the minimal cost of
@@ -58,7 +56,7 @@ fn next_mask(mask: SeenMask) -> SeenMask {
 
 impl HeldKarp {
     pub fn new() -> Self {
-        HeldKarp { g: vec![[0; MAX_CITIES]; NUM_MASKS] }
+        HeldKarp { g: vec![[0; MAX_PORTS]; NUM_MASKS] }
     }
 
     pub fn traveling_salesman(
@@ -66,13 +64,12 @@ impl HeldKarp {
         ) -> Tour {
         // All submasks are in a space where 'start' is excluded, so we
         // "translate" the ids > start to 'id - 1'.
-        let translate: [u8; MAX_CITIES] =
-            (0..graph.vertices.len()).map(|v| {
+        let translate: [u8; MAX_PORTS] =
+            (0..graph.ports.len()).map(|v| {
                 let v = v as VertexId;
                 if v < start { v } else if v > start { v - 1 } else { v }
             }).collect::<Vec<_>>().try_into().unwrap();
-        let others: [VertexId; MAX_CITIES - 1] = (0..graph.vertices.len())
-            .map(|v| v as VertexId).filter(|&v| v != start)
+        let others: [VertexId; MAX_PORTS - 1] = graph.others(start)
             .collect::<Vec<_>>().try_into().unwrap();
             
         let tick = graph.start_tick + 1;  // time to dock spawn

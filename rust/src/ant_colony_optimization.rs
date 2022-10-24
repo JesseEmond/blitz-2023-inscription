@@ -1,14 +1,17 @@
+// TODO: fix for adjacency matrix graph
 use arrayvec::ArrayVec;
-use log::{debug};
+// use log::{debug};
 use serde::{Deserialize};
-use std::cmp::Ordering;
-use std::iter;
-use rand::{Rng, SeedableRng};
-use rand::distributions::{Distribution, WeightedIndex};
+// use std::cmp::Ordering;
+// use std::iter;
+// use rand::{Rng, SeedableRng};
+use rand::{SeedableRng};
+// use rand::distributions::{Distribution, WeightedIndex};
 use rand::rngs::SmallRng;
 
-use crate::challenge::{Solution, eval_score};
-use crate::graph::{EdgeId, Graph, VertexId, MAX_VERTEX_EDGES, MAX_TICK_OFFSETS, MAX_VERTICES};
+use crate::challenge::{Solution, eval_score, MAX_PORTS, MAX_TICK_OFFSETS};
+use crate::graph::{Graph, VertexId};
+use crate::pathfinding::{Pos};
 
 // Based on the documentation at:
 // https://staff.washington.edu/paymana/swarm/stutzle99-eaecs.pdf
@@ -59,42 +62,37 @@ pub struct HyperParams {
 #[derive(Clone)]
 pub struct Ant {
     pub start: VertexId,
-    pub edges: ArrayVec<EdgeId, MAX_VERTICES>,
+    pub current: VertexId,
+    pub path: ArrayVec<VertexId, MAX_PORTS>,
     pub tick: u16,
     pub tick_offset: u8,  // offset in the tide schedule, for optimization.
     pub score: i32,
     pub seen: u64,  // mask of seen vertices
 }
 
-type EtaPows = ArrayVec<ArrayVec<f32, MAX_VERTEX_EDGES>, MAX_TICK_OFFSETS>;
-type Costs = ArrayVec::<ArrayVec::<u16, MAX_VERTEX_EDGES>, MAX_TICK_OFFSETS>;
-type EdgeWeights = ArrayVec<f32, MAX_VERTEX_EDGES>;
+type EtaPows = ArrayVec<ArrayVec<f32, MAX_PORTS>, MAX_TICK_OFFSETS>;
+type EdgeWeights = ArrayVec<f32, MAX_PORTS>;
 
 // Holds the trails coming out of a vertex, used for optimization purposes to
 // precompute Vecs of weights.
-pub struct VertexTrails {
-    // TODO move data together..?
+// pub struct VertexTrails {
+//     // TODO move data together..?
 
-    // τ, pheromone strength of each edge.
-    pub pheromones: ArrayVec<f32, MAX_VERTEX_EDGES>,
+//     // τ, pheromone strength of each edge.
+//     pub pheromones: ArrayVec<f32, MAX_PORTS>,
 
-    // For a given tick offset, a list of pre-computed weights, one for each
-    // edge.Used in sampling.
-    pub offset_trail_weights: ArrayVec<EdgeWeights, MAX_TICK_OFFSETS>,
-    // Pre-computed per-edge eta^beta, for each tick offset.
-    pub eta_pows: EtaPows,
-
-    // For a given offset, cost of the edge path. Used for faster lookups.
-    costs: Costs,
-    // Edges go where, for faster lookup.
-    goes_to: ArrayVec<VertexId, MAX_VERTEX_EDGES>,
-}
+//     // For a given tick offset, a list of pre-computed weights, one for each
+//     // edge.Used in sampling.
+//     pub offset_trail_weights: ArrayVec<EdgeWeights, MAX_TICK_OFFSETS>,
+//     // Pre-computed per-edge eta^beta, for each tick offset.
+//     pub eta_pows: EtaPows,
+// }
 
 pub struct Colony {
     pub hyperparams: HyperParams,
     pub graph: Graph,
     // Trails for each vertex.
-    pub trails: Vec<VertexTrails>,
+    // pub trails: Vec<VertexTrails>,
     pub global_best: Option<Ant>,
     pub rng: SmallRng,
 }
@@ -118,9 +116,10 @@ impl Ant {
     pub fn new() -> Self {
         Ant {
             start: 0,
+            current: 0,
             tick: 0,
             tick_offset: 0,
-            edges: ArrayVec::new(),
+            path: ArrayVec::new(),
             score: 0,
             seen: 0,
         }
@@ -128,34 +127,34 @@ impl Ant {
 
     pub fn reset(&mut self, start: VertexId, tick: u16, tick_offset: u8) {
         self.start = start;
+        self.current = start;
         self.tick = tick + 1;  // Time to dock our start
         self.tick_offset = tick_offset;
-        self.edges.clear();
+        self.path.clear();
         assert!(start < 64);
         self.seen = 1u64 << start;
     }
 
-    fn visit(&mut self, edge_id: EdgeId, graph: &Graph) {
-        self.edges.push(edge_id);
-        let edge = graph.edge(edge_id);
-        let cost = edge.path(self.tick).cost;
-        self.tick += cost + 1;  // +1 to dock
+    fn visit(&mut self, port: VertexId, graph: &Graph) {
+        self.path.push(port);
         self.tick_offset = (self.tick % graph.tick_offsets as u16) as u8;
+        let cost = graph.cost(self.tick_offset, self.current, port);
+        self.tick += (cost + 1) as u16;  // +1 to dock
         self.score = self.compute_score(graph, /*simulate_to_end=*/false);
-        if self.seen & (1u64 << edge.to) != 0 {
-            assert!(edge.to == self.start,
+        if self.seen & (1u64 << port) != 0 {
+            assert!(port == self.start,
                     "visiting vertex not tagged as unseen (and not going home)");
         }
-        self.seen |= 1u64 << edge.to;
+        self.seen |= 1u64 << port;
+        self.current = port;
     }
 
     fn compute_score(&self, graph: &Graph, simulate_to_end: bool) -> i32 {
-        if self.edges.is_empty() {
+        if self.path.is_empty() {
             return 0;
         }
-        let current = self.current_vertex(graph);
-        let looped = current == self.start;
-        let visits = self.edges.len() + 1;  // +1 for spawn
+        let looped = self.current == self.start;
+        let visits = self.path.len() + 1;  // +1 for spawn
         let tick = if simulate_to_end && !looped {
             graph.max_ticks
         } else if looped {
@@ -168,157 +167,149 @@ impl Ant {
 
     // Consider our score if we kept only our first 'num_edges' edges, plus a
     // trip back home, if there's enough ticks to do so.
-    fn hypothetical_home_score(
-        &self, graph: &Graph, num_edges: usize
-        ) -> Option<i32> {
-        let (vertex, mut tick) = self.simulate_to_num_edges(graph, num_edges);
-        let edge_go_home = graph.vertex_edge_to(vertex, self.start).expect("No path home..?");
-        let cost_go_home = graph.edge(edge_go_home).path(tick).cost;
-        tick += cost_go_home; // no +1, last home docking doesn't count.
-        if tick < graph.max_ticks {
-            let visits = num_edges + 2;  // +1 for spawn, +1 for last
-            Some(eval_score(visits as u32, tick, /*looped=*/true))
-        } else {
-            None
-        }
-    }
+    // fn hypothetical_home_score(
+    //     &self, graph: &Graph, num_edges: usize
+    //     ) -> Option<i32> {
+    //     let (vertex, mut tick) = self.simulate_to_num_edges(graph, num_edges);
+    //     let edge_go_home = graph.vertex_edge_to(vertex, self.start).expect("No path home..?");
+    //     let cost_go_home = graph.edge(edge_go_home).path(tick).cost;
+    //     tick += cost_go_home; // no +1, last home docking doesn't count.
+    //     if tick < graph.max_ticks {
+    //         let visits = num_edges + 2;  // +1 for spawn, +1 for last
+    //         Some(eval_score(visits as u32, tick, /*looped=*/true))
+    //     } else {
+    //         None
+    //     }
+    // }
 
-    // Helper to get the final (vertex, tick) if we were to only use 'num_edges'
-    // of the ant's stored edges.
-    fn simulate_to_num_edges(
-        &self, graph: &Graph, num_edges: usize
-        ) -> (VertexId, u16) {
-        let mut tick = graph.start_tick + 1;  // +1 to dock initially
-        let mut vertex = self.start;
-        for edge_id in &self.edges[..num_edges] {
-            let cost = graph.edge(*edge_id).path(tick).cost;
-            tick += cost + 1;  // +1 to dock it
-            vertex = graph.edge(*edge_id).to;
-        }
-        (vertex, tick)
-    }
+    // // Helper to get the final (vertex, tick) if we were to only use 'num_edges'
+    // // of the ant's stored edges.
+    // fn simulate_to_num_edges(
+    //     &self, graph: &Graph, num_edges: usize
+    //     ) -> (VertexId, u16) {
+    //     let mut tick = graph.start_tick + 1;  // +1 to dock initially
+    //     let mut vertex = self.start;
+    //     for edge_id in &self.edges[..num_edges] {
+    //         let cost = graph.edge(*edge_id).path(tick).cost;
+    //         tick += cost + 1;  // +1 to dock it
+    //         vertex = graph.edge(*edge_id).to;
+    //     }
+    //     (vertex, tick)
+    // }
 
-    fn current_vertex(&self, graph: &Graph) -> VertexId {
-        if self.edges.is_empty() {
-            self.start
-        } else {
-            graph.edge(*self.edges.last().unwrap()).to
-        }
-    }
+    // fn valid_option(&self, edge_cost: u16, to_vertex_id: VertexId, graph: &Graph) -> bool {
+    //     let seen = (self.seen & (1u64 << to_vertex_id)) != 0;
+    //     self.tick + edge_cost + 1 < graph.max_ticks && !seen
+    // }
 
-    fn valid_option(&self, edge_cost: u16, to_vertex_id: VertexId, graph: &Graph) -> bool {
-        let seen = (self.seen & (1u64 << to_vertex_id)) != 0;
-        self.tick + edge_cost + 1 < graph.max_ticks && !seen
-    }
-
-    // Add a path back home to our path, if we should, potentially truncating.
-    fn finalize_path(&mut self, graph: &Graph) {
-        let mut best_score = self.compute_score(graph, /*simulate_to_end=*/true);
-        let mut go_home_at_index: Option<usize> = None;
-        for num_edges in 1..=self.edges.len() {
-            let score = self.hypothetical_home_score(graph, num_edges);
-            match score {
-                Some(score) if score > best_score => {
-                    best_score = score;
-                    go_home_at_index = Some(num_edges);  // insert after num_edges
-                },
-                _ => (),
-            }
-        }
-        if let Some(go_home_index) = go_home_at_index {
-            let (vertex, tick) = self.simulate_to_num_edges(graph, go_home_index);
-            for edge_id in &self.edges[go_home_index..] {
-                let edge = graph.edge(*edge_id);
-                self.seen ^= 1u64 << edge.to;
-            }
-            self.edges.truncate(go_home_index);
-            self.tick = tick;
-            let edge_go_home = graph.vertex_edge_to(vertex, self.start)
-                .expect("No path home..?");
-            self.visit(edge_go_home, graph);
-            assert!(self.compute_score(graph, /*simulate_to_end=*/true) == best_score);
-        }
-    }
+    // // Add a path back home to our path, if we should, potentially truncating.
+    // fn finalize_path(&mut self, graph: &Graph) {
+    //     let mut best_score = self.compute_score(graph, /*simulate_to_end=*/true);
+    //     let mut go_home_at_index: Option<usize> = None;
+    //     for num_edges in 1..=self.edges.len() {
+    //         let score = self.hypothetical_home_score(graph, num_edges);
+    //         match score {
+    //             Some(score) if score > best_score => {
+    //                 best_score = score;
+    //                 go_home_at_index = Some(num_edges);  // insert after num_edges
+    //             },
+    //             _ => (),
+    //         }
+    //     }
+    //     if let Some(go_home_index) = go_home_at_index {
+    //         let (vertex, tick) = self.simulate_to_num_edges(graph, go_home_index);
+    //         for edge_id in &self.edges[go_home_index..] {
+    //             let edge = graph.edge(*edge_id);
+    //             self.seen ^= 1u64 << edge.to;
+    //         }
+    //         self.edges.truncate(go_home_index);
+    //         self.tick = tick;
+    //         let edge_go_home = graph.vertex_edge_to(vertex, self.start)
+    //             .expect("No path home..?");
+    //         self.visit(edge_go_home, graph);
+    //         assert!(self.compute_score(graph, /*simulate_to_end=*/true) == best_score);
+    //     }
+    // }
 }
 
-impl VertexTrails {
-    pub fn new(vertex_id: VertexId, graph: &Graph, hyperparams: &HyperParams) -> Self {
-        let vertex = graph.vertex(vertex_id);
-        let eta_pows: EtaPows = (0..graph.tick_offsets).map(|offset| {
-            vertex.edges.iter().map(|&edge_id| {
-                let distance = graph.edge(edge_id).path(offset as u16).cost;
-                let beta = hyperparams.heuristic_power;
-                let eta = 1.0 / (distance as f32);
-                eta.powf(beta)
-            }).collect()
-        }).collect();
-        let costs: Costs = (0..graph.tick_offsets).map(|offset| {
-            vertex.edges.iter().map(|&edge_id| {
-                graph.edge(edge_id).path(offset as u16).cost
-            }).collect()
-        }).collect();
+// impl VertexTrails {
+//     pub fn new(vertex_id: VertexId, graph: &Graph, hyperparams: &HyperParams) -> Self {
+//         let vertex = graph.vertex(vertex_id);
+//         let eta_pows: EtaPows = (0..graph.tick_offsets).map(|offset| {
+//             vertex.edges.iter().map(|&edge_id| {
+//                 let distance = graph.edge(edge_id).path(offset as u16).cost;
+//                 let beta = hyperparams.heuristic_power;
+//                 let eta = 1.0 / (distance as f32);
+//                 eta.powf(beta)
+//             }).collect()
+//         }).collect();
+//         let costs: Costs = (0..graph.tick_offsets).map(|offset| {
+//             vertex.edges.iter().map(|&edge_id| {
+//                 graph.edge(edge_id).path(offset as u16).cost
+//             }).collect()
+//         }).collect();
 
-        VertexTrails {
-            pheromones: ArrayVec::from_iter(vec![hyperparams.base_pheromones; vertex.edges.len()]),
-            offset_trail_weights: ArrayVec::from_iter(vec![ArrayVec::from_iter(vec![1.0; vertex.edges.len()]); graph.tick_offsets]),
-            eta_pows,
-            costs,
-            goes_to: vertex.edges.iter().map(|&edge_id| graph.edge(edge_id).to).collect(),
-        }
-    }
+//         VertexTrails {
+//             pheromones: ArrayVec::from_iter(vec![hyperparams.base_pheromones; vertex.edges.len()]),
+//             offset_trail_weights: ArrayVec::from_iter(vec![ArrayVec::from_iter(vec![1.0; vertex.edges.len()]); graph.tick_offsets]),
+//             eta_pows,
+//             costs,
+//             goes_to: vertex.edges.iter().map(|&edge_id| graph.edge(edge_id).to).collect(),
+//         }
+//     }
 
-    pub fn evaporate_add(&mut self, option_idx: usize,
-                         evaporation: f32, pheromone: f32) {
-        self.pheromones[option_idx] = (1.0 - evaporation * self.pheromones[option_idx])
-            + evaporation * pheromone;
-        self.update_weights(option_idx);
-    }
+//     pub fn evaporate_add(&mut self, option_idx: usize,
+//                          evaporation: f32, pheromone: f32) {
+//         self.pheromones[option_idx] = (1.0 - evaporation * self.pheromones[option_idx])
+//             + evaporation * pheromone;
+//         self.update_weights(option_idx);
+//     }
 
-    pub fn add(&mut self, option_idx: usize, pheromone: f32) {
-        self.pheromones[option_idx] += pheromone;
-        self.update_weights(option_idx);
-    }
+//     pub fn add(&mut self, option_idx: usize, pheromone: f32) {
+//         self.pheromones[option_idx] += pheromone;
+//         self.update_weights(option_idx);
+//     }
 
-    pub fn evaporate(&mut self, option_idx: usize, evaporation_rate: f32) {
-        self.pheromones[option_idx] *= 1.0 - evaporation_rate;
-        self.update_weights(option_idx);
-    }
+//     pub fn evaporate(&mut self, option_idx: usize, evaporation_rate: f32) {
+//         self.pheromones[option_idx] *= 1.0 - evaporation_rate;
+//         self.update_weights(option_idx);
+//     }
 
-    pub fn update_weights(&mut self, option_idx: usize) {
-        for offset in 0..self.offset_trail_weights.len() {
-            let tau = self.pheromones[option_idx];
-            self.offset_trail_weights[offset][option_idx] = tau * self.eta_pow(offset as u8, option_idx as u8);
-        }
-    }
+//     pub fn update_weights(&mut self, option_idx: usize) {
+//         for offset in 0..self.offset_trail_weights.len() {
+//             let tau = self.pheromones[option_idx];
+//             self.offset_trail_weights[offset][option_idx] = tau * self.eta_pow(offset as u8, option_idx as u8);
+//         }
+//     }
 
-    pub fn weights(&self, tick: u16) -> &EdgeWeights {
-        let offset = (tick as usize) % self.offset_trail_weights.len();
-        unsafe {
-            self.offset_trail_weights.get_unchecked(offset)
-        }
-    }
+//     pub fn weights(&self, tick: u16) -> &EdgeWeights {
+//         let offset = (tick as usize) % self.offset_trail_weights.len();
+//         unsafe {
+//             self.offset_trail_weights.get_unchecked(offset)
+//         }
+//     }
 
-    pub fn cost(&self, tick_offset: u8, edge_idx: u8) -> u16 {
-        unsafe {
-            *self.costs.get_unchecked(tick_offset as usize).get_unchecked(edge_idx as usize)
-        }
-    }
+//     pub fn cost(&self, tick_offset: u8, edge_idx: u8) -> u16 {
+//         unsafe {
+//             *self.costs.get_unchecked(tick_offset as usize).get_unchecked(edge_idx as usize)
+//         }
+//     }
 
-    fn eta_pow(&self, tick_offset: u8, edge_idx: u8) -> f32 {
-        unsafe {
-            *self.eta_pows.get_unchecked(tick_offset as usize).get_unchecked(edge_idx as usize)
-        }
-    }
-}
+//     fn eta_pow(&self, tick_offset: u8, edge_idx: u8) -> f32 {
+//         unsafe {
+//             *self.eta_pows.get_unchecked(tick_offset as usize).get_unchecked(edge_idx as usize)
+//         }
+//     }
+// }
 
 impl Colony {
     pub fn new(graph: Graph, hyperparams: HyperParams, seed: u64) -> Self {
-        let vertex_trails = (0..graph.vertices.len()).map(|vertex_id| {
-            VertexTrails::new(vertex_id as VertexId, &graph, &hyperparams)
-        }).collect();
+        // let vertex_trails = (0..graph.vertices.len()).map(|vertex_id| {
+        //     VertexTrails::new(vertex_id as VertexId, &graph, &hyperparams)
+        // }).collect();
         Colony {
             graph,
-            trails: vertex_trails,
+            // trails: vertex_trails,
             global_best: None,
             hyperparams,
             rng: SmallRng::seed_from_u64(seed),
@@ -326,199 +317,200 @@ impl Colony {
     }
 
     pub fn run(&mut self) -> Solution {
-        debug_log_graph(&self.graph);
-        debug_log_heuristics(&self.graph);
-        for iter in 0..self.hyperparams.iterations {
-            debug!("ACO iteration #{iter}/{total}", iter = iter + 1,
-                   total = self.hyperparams.iterations);
-            debug_log_pheromones(self, iter);
-            debug_log_scores(self, iter);
-            self.run_iteration();
-            let best_ant = self.global_best.as_ref().expect("No solution found...?");
-            debug!("  best global score: {best}", best = best_ant.score);
-        }
-        let best_ant = self.global_best.as_ref().expect("No solution found...?");
-        Solution::from_ant(best_ant, &self.graph)
+        // debug_log_graph(&self.graph);
+        // debug_log_heuristics(&self.graph);
+        // for iter in 0..self.hyperparams.iterations {
+        //     debug!("ACO iteration #{iter}/{total}", iter = iter + 1,
+        //            total = self.hyperparams.iterations);
+        //     debug_log_pheromones(self, iter);
+        //     debug_log_scores(self, iter);
+        //     self.run_iteration();
+        //     let best_ant = self.global_best.as_ref().expect("No solution found...?");
+        //     debug!("  best global score: {best}", best = best_ant.score);
+        // }
+        // let best_ant = self.global_best.as_ref().expect("No solution found...?");
+        // Solution::from_ant(best_ant, &self.graph)
+        Solution { score: 0, spawn: Pos { x: 0, y: 0 }, paths: Vec::new() }
     }
 
-    fn run_iteration(&mut self) {
-        self.construct_solutions();
-        // Note: our path finalization logic is essentially a local search.
-        self.update_trails();
-    }
+    // fn run_iteration(&mut self) {
+    //     self.construct_solutions();
+    //     // Note: our path finalization logic is essentially a local search.
+    //     self.update_trails();
+    // }
 
-    fn construct_solutions(&mut self) -> Vec<Ant> {
-        let ants: Vec<Ant> = iter::repeat(()).take(self.hyperparams.ants)
-            .map(|_| self.construct_solution()).collect();
-        let local_best = ants.iter().max_by_key(|ant| ant.score).cloned().unwrap();
-        debug!("  local best score: {score}", score = local_best.score);
-        debug_log_ant(&local_best, "[LOGGING_LOCAL_BEST_ANT]");
-        for (i, ant) in ants.iter().enumerate() {
-            debug_log_ant(ant, format!("[LOGGING_ANT]{i} ").as_str());
-        }
-        if self.global_best.is_none()
-            || local_best.score > self.global_best.as_ref().unwrap().score {
-            self.global_best = Some(local_best);
-        }
-        debug_log_ant(self.global_best.as_ref().unwrap(), "[LOGGING_GLOBAL_BEST_ANT]");
-        ants
-    }
+    // fn construct_solutions(&mut self) -> Vec<Ant> {
+    //     let ants: Vec<Ant> = iter::repeat(()).take(self.hyperparams.ants)
+    //         .map(|_| self.construct_solution()).collect();
+    //     let local_best = ants.iter().max_by_key(|ant| ant.score).cloned().unwrap();
+    //     debug!("  local best score: {score}", score = local_best.score);
+    //     debug_log_ant(&local_best, "[LOGGING_LOCAL_BEST_ANT]");
+    //     for (i, ant) in ants.iter().enumerate() {
+    //         debug_log_ant(ant, format!("[LOGGING_ANT]{i} ").as_str());
+    //     }
+    //     if self.global_best.is_none()
+    //         || local_best.score > self.global_best.as_ref().unwrap().score {
+    //         self.global_best = Some(local_best);
+    //     }
+    //     debug_log_ant(self.global_best.as_ref().unwrap(), "[LOGGING_GLOBAL_BEST_ANT]");
+    //     ants
+    // }
 
-    fn sample_option(&mut self, ant: &Ant) -> Option<EdgeId> {
-        let tick = ant.tick;
-        let vertex_id = ant.current_vertex(&self.graph);
-        let trail = &self.trails[vertex_id as usize];
-        let vertex = &self.graph.vertex(vertex_id);
-        let weights = trail.weights(tick).iter().enumerate().map(|(i, w)| {
-            let valid = ant.valid_option(trail.cost(ant.tick_offset, i as u8),
-                                         trail.goes_to[i], &self.graph);
-            w * ((valid as i32) as f32)
-        });
-        let rand_valid_option = |rng: &mut SmallRng| -> Option<EdgeId> {
-            let all_options: Vec<EdgeId> = vertex.edges.iter().filter(|&edge_id| {
-                    let edge = &self.graph.edge(*edge_id);
-                    ant.valid_option(edge.path(tick).cost, edge.to, &self.graph)
-                }).cloned().collect();
-            if all_options.is_empty() {
-                None
-            } else {
-                Some(all_options[rng.gen_range(0..all_options.len())])
-            }
-        };
-        if self.rng.gen::<f32>() < self.hyperparams.exploitation_probability {
-            // Greedy exploitation
-            let idx = weights.enumerate()
-                .max_by(|(_, w1), (_, w2)| w1.partial_cmp(w2).unwrap_or(Ordering::Equal))
-                .map(|(idx, _)| idx).unwrap();
-            if ant.valid_option(trail.cost(ant.tick_offset, idx as u8),
-                                trail.goes_to[idx], &self.graph) {
-                Some(vertex.edges[idx])
-            } else {
-                rand_valid_option(&mut self.rng)
-            }
-        } else if let Ok(distribution) = WeightedIndex::new(weights) {
-            Some(vertex.edges[distribution.sample(&mut self.rng)])
-        } else {
-            rand_valid_option(&mut self.rng)
-        }
-    }
+    // fn sample_option(&mut self, ant: &Ant) -> Option<EdgeId> {
+    //     let tick = ant.tick;
+    //     let vertex_id = ant.current_vertex(&self.graph);
+    //     let trail = &self.trails[vertex_id as usize];
+    //     let vertex = &self.graph.vertex(vertex_id);
+    //     let weights = trail.weights(tick).iter().enumerate().map(|(i, w)| {
+    //         let valid = ant.valid_option(trail.cost(ant.tick_offset, i as u8),
+    //                                      trail.goes_to[i], &self.graph);
+    //         w * ((valid as i32) as f32)
+    //     });
+    //     let rand_valid_option = |rng: &mut SmallRng| -> Option<EdgeId> {
+    //         let all_options: Vec<EdgeId> = vertex.edges.iter().filter(|&edge_id| {
+    //                 let edge = &self.graph.edge(*edge_id);
+    //                 ant.valid_option(edge.path(tick).cost, edge.to, &self.graph)
+    //             }).cloned().collect();
+    //         if all_options.is_empty() {
+    //             None
+    //         } else {
+    //             Some(all_options[rng.gen_range(0..all_options.len())])
+    //         }
+    //     };
+    //     if self.rng.gen::<f32>() < self.hyperparams.exploitation_probability {
+    //         // Greedy exploitation
+    //         let idx = weights.enumerate()
+    //             .max_by(|(_, w1), (_, w2)| w1.partial_cmp(w2).unwrap_or(Ordering::Equal))
+    //             .map(|(idx, _)| idx).unwrap();
+    //         if ant.valid_option(trail.cost(ant.tick_offset, idx as u8),
+    //                             trail.goes_to[idx], &self.graph) {
+    //             Some(vertex.edges[idx])
+    //         } else {
+    //             rand_valid_option(&mut self.rng)
+    //         }
+    //     } else if let Ok(distribution) = WeightedIndex::new(weights) {
+    //         Some(vertex.edges[distribution.sample(&mut self.rng)])
+    //     } else {
+    //         rand_valid_option(&mut self.rng)
+    //     }
+    // }
 
-    fn construct_solution(&mut self) -> Ant {
-        let mut ant = Ant::new();
-        let start = self.rng.gen_range(0..self.graph.vertices.len());
-        ant.reset(start as VertexId, self.graph.start_tick, 0);
-        while let Some(edge_id) = self.sample_option(&ant) {
-            let from = self.graph.edge(edge_id).from;
-            let edge_idx = self.graph.vertex(from).edges.iter().position(|&e| e == edge_id).unwrap();
-            // Local trail update
-            let pheromone_add = self.hyperparams.local_evaporation_rate
-                * self.hyperparams.base_pheromones;
-            self.trails[from as usize].evaporate_add(edge_idx,
-                self.hyperparams.local_evaporation_rate,pheromone_add);
-            // TODO: also update other direction?
-            ant.visit(edge_id, &self.graph);
-        }
-        ant.finalize_path(&self.graph);
-        // TODO: should only do local trail update here, after finalizing?
-        ant
-    }
+    // fn construct_solution(&mut self) -> Ant {
+    //     let mut ant = Ant::new();
+    //     let start = self.rng.gen_range(0..self.graph.vertices.len());
+    //     ant.reset(start as VertexId, self.graph.start_tick, 0);
+    //     while let Some(edge_id) = self.sample_option(&ant) {
+    //         let from = self.graph.edge(edge_id).from;
+    //         let edge_idx = self.graph.vertex(from).edges.iter().position(|&e| e == edge_id).unwrap();
+    //         // Local trail update
+    //         let pheromone_add = self.hyperparams.local_evaporation_rate
+    //             * self.hyperparams.base_pheromones;
+    //         self.trails[from as usize].evaporate_add(edge_idx,
+    //             self.hyperparams.local_evaporation_rate,pheromone_add);
+    //         // TODO: also update other direction?
+    //         ant.visit(edge_id, &self.graph);
+    //     }
+    //     ant.finalize_path(&self.graph);
+    //     // TODO: should only do local trail update here, after finalizing?
+    //     ant
+    // }
     
-    fn update_trails(&mut self) {
-        // Decay all existing trails
-        for vertex_trails in self.trails.iter_mut() {
-            for option_idx in 0..vertex_trails.pheromones.len() {
-                vertex_trails.evaporate(option_idx, self.hyperparams.evaporation_rate);
-            }
-        }
+    // fn update_trails(&mut self) {
+    //     // Decay all existing trails
+    //     for vertex_trails in self.trails.iter_mut() {
+    //         for option_idx in 0..vertex_trails.pheromones.len() {
+    //             vertex_trails.evaporate(option_idx, self.hyperparams.evaporation_rate);
+    //         }
+    //     }
 
-        // Global trail update
-        // TODO: sometimes pick local best?
-        let best = self.global_best.as_ref().expect("No global best at update time!");
-        let upper_bound_score = eval_score((self.graph.vertices.len() + 1) as u32,
-                                           /*ticks=*/0, /*looped=*/true);
-        // TODO: compute pheromone add differently?
-        let add = 1.0 / (upper_bound_score + 1 - best.score) as f32;
+    //     // Global trail update
+    //     // TODO: sometimes pick local best?
+    //     let best = self.global_best.as_ref().expect("No global best at update time!");
+    //     let upper_bound_score = eval_score((self.graph.vertices.len() + 1) as u32,
+    //                                        /*ticks=*/0, /*looped=*/true);
+    //     // TODO: compute pheromone add differently?
+    //     let add = 1.0 / (upper_bound_score + 1 - best.score) as f32;
 
-        let pheromone_add = self.hyperparams.evaporation_rate * add;
-        for edge_id in &best.edges {
-            let edge = self.graph.edge(*edge_id);
-            let vertex = self.graph.vertex(edge.from);
-            let edge_idx = vertex.edges.iter().position(|&e| e == *edge_id).unwrap();
-            self.trails[edge.from as usize].add(edge_idx, pheromone_add)
-            // TODO: also update other direction?
-        }
-    }
+    //     let pheromone_add = self.hyperparams.evaporation_rate * add;
+    //     for edge_id in &best.edges {
+    //         let edge = self.graph.edge(*edge_id);
+    //         let vertex = self.graph.vertex(edge.from);
+    //         let edge_idx = vertex.edges.iter().position(|&e| e == *edge_id).unwrap();
+    //         self.trails[edge.from as usize].add(edge_idx, pheromone_add)
+    //         // TODO: also update other direction?
+    //     }
+    // }
 }
 
 impl Solution {
-    pub fn from_ant(ant: &Ant, graph: &Graph) -> Self {
-        let mut repeat_ant = Ant::new();
-        repeat_ant.reset(ant.start, graph.start_tick, 0);
-        let mut paths = Vec::new();
-        for edge_id in &ant.edges {
-            let path_id = graph.edge(*edge_id).path(repeat_ant.tick).path;
-            paths.push(graph.paths[path_id as usize].clone());
-            repeat_ant.visit(*edge_id, graph);
-        }
-        Solution {
-            score: ant.score,
-            spawn: graph.vertex(ant.start).position,
-            paths,
-        }
-    }
+    // pub fn from_ant(ant: &Ant, graph: &Graph) -> Self {
+    //     let mut repeat_ant = Ant::new();
+    //     repeat_ant.reset(ant.start, graph.start_tick, 0);
+    //     let mut paths = Vec::new();
+    //     for edge_id in &ant.edges {
+    //         let path_id = graph.edge(*edge_id).path(repeat_ant.tick).path;
+    //         paths.push(graph.paths[path_id as usize].clone());
+    //         repeat_ant.visit(*edge_id, graph);
+    //     }
+    //     Solution {
+    //         score: ant.score,
+    //         spawn: graph.vertex(ant.start).position,
+    //         paths,
+    //     }
+    // }
 }
 
 
 // All the following are pretty hacky log outputs, optionally parsed to produce
 // visualizations.
-fn debug_log_graph(graph: &Graph) {
-    debug!("[LOGGING_GRAPH_START_TICK]{tick}", tick = graph.start_tick);
-    debug!("[LOGGING_GRAPH_MAX_TICK]{tick}", tick = graph.max_ticks);
-    for vertex in &graph.vertices {
-        debug!("[LOGGING_GRAPH_VERTICES]{x} {y} {edges:?}",
-              x = vertex.position.x, y = vertex.position.y,
-              edges = vertex.edges);
-    }
-    for edge in &graph.edges {
-        let path_costs: Vec<u16> = edge.paths.iter().map(|p| p.cost).collect();
-        debug!("[LOGGING_GRAPH_EDGES]{from} {to} {path_costs:?}",
-              from = edge.from, to = edge.to);
-    }
-}
-fn debug_log_pheromones(colony: &Colony, iter: usize) {
-    let mut pheromones: Vec<f32> = vec![0.0; colony.graph.edges.len()];
-    for (vertex_id, vertex) in colony.graph.vertices.iter().enumerate() {
-        for (edge_idx, edge_id) in vertex.edges.iter().enumerate() {
-            pheromones[*edge_id as usize] = colony.trails[vertex_id].pheromones[edge_idx];
-        }
-    }
-    debug!("[LOGGING_PHEROMONES]{iter} {pheromones:?}");
-}
-fn debug_log_ant(ant: &Ant, tag: &str) {
-    debug!("{tag}{start} {edges:?} {score}", start = ant.start,
-          edges = ant.edges, score = ant.score);
-}
-fn debug_log_heuristics(graph: &Graph) {
-    for edge in &graph.edges {
-        let dists: Vec<u16> = edge.paths.iter().map(|p| p.cost).collect();
-        let min = 1.0 / (*dists.iter().max().unwrap() as f32);
-        let max = 1.0 / (*dists.iter().min().unwrap() as f32);
-        debug!("[LOGGING_HEURISTIC]{min} {max}");
-    }
-}
-fn debug_log_scores(colony: &Colony, iter: usize) {
-    for (idx, vertex) in colony.graph.vertices.iter().enumerate() {
-        for (edge_idx, edge) in vertex.edges.iter().enumerate() {
-            let distances: Vec<u16> = colony.graph.edge(*edge).paths.iter().map(|p| p.cost).collect();
-            let min_dist = *distances.iter().min().unwrap();
-            let max_dist = *distances.iter().max().unwrap();
-            let tau = colony.trails[idx].pheromones[edge_idx];
-            let beta = colony.hyperparams.heuristic_power;
-            let min_eta = 1.0 / (max_dist as f32);
-            let max_eta = 1.0 / (min_dist as f32);
-            let min_weight = tau * min_eta.powf(beta);
-            let max_weight = tau * max_eta.powf(beta);
-            debug!("[LOGGING_WEIGHTS]{iter} {idx} {edge} {min_weight} {max_weight}");
-        }
-    }
-}
+// fn debug_log_graph(graph: &Graph) {
+//     debug!("[LOGGING_GRAPH_START_TICK]{tick}", tick = graph.start_tick);
+//     debug!("[LOGGING_GRAPH_MAX_TICK]{tick}", tick = graph.max_ticks);
+//     for vertex in &graph.vertices {
+//         debug!("[LOGGING_GRAPH_VERTICES]{x} {y} {edges:?}",
+//               x = vertex.position.x, y = vertex.position.y,
+//               edges = vertex.edges);
+//     }
+//     for edge in &graph.edges {
+//         let path_costs: Vec<u16> = edge.paths.iter().map(|p| p.cost).collect();
+//         debug!("[LOGGING_GRAPH_EDGES]{from} {to} {path_costs:?}",
+//               from = edge.from, to = edge.to);
+//     }
+// }
+// fn debug_log_pheromones(colony: &Colony, iter: usize) {
+//     let mut pheromones: Vec<f32> = vec![0.0; colony.graph.edges.len()];
+//     for (vertex_id, vertex) in colony.graph.vertices.iter().enumerate() {
+//         for (edge_idx, edge_id) in vertex.edges.iter().enumerate() {
+//             pheromones[*edge_id as usize] = colony.trails[vertex_id].pheromones[edge_idx];
+//         }
+//     }
+//     debug!("[LOGGING_PHEROMONES]{iter} {pheromones:?}");
+// }
+// fn debug_log_ant(ant: &Ant, tag: &str) {
+//     debug!("{tag}{start} {edges:?} {score}", start = ant.start,
+//           edges = ant.edges, score = ant.score);
+// }
+// fn debug_log_heuristics(graph: &Graph) {
+//     for edge in &graph.edges {
+//         let dists: Vec<u16> = edge.paths.iter().map(|p| p.cost).collect();
+//         let min = 1.0 / (*dists.iter().max().unwrap() as f32);
+//         let max = 1.0 / (*dists.iter().min().unwrap() as f32);
+//         debug!("[LOGGING_HEURISTIC]{min} {max}");
+//     }
+// }
+// fn debug_log_scores(colony: &Colony, iter: usize) {
+//     for (idx, vertex) in colony.graph.vertices.iter().enumerate() {
+//         for (edge_idx, edge) in vertex.edges.iter().enumerate() {
+//             let distances: Vec<u16> = colony.graph.edge(*edge).paths.iter().map(|p| p.cost).collect();
+//             let min_dist = *distances.iter().min().unwrap();
+//             let max_dist = *distances.iter().max().unwrap();
+//             let tau = colony.trails[idx].pheromones[edge_idx];
+//             let beta = colony.hyperparams.heuristic_power;
+//             let min_eta = 1.0 / (max_dist as f32);
+//             let max_eta = 1.0 / (min_dist as f32);
+//             let min_weight = tau * min_eta.powf(beta);
+//             let max_weight = tau * max_eta.powf(beta);
+//             debug!("[LOGGING_WEIGHTS]{iter} {idx} {edge} {min_weight} {max_weight}");
+//         }
+//     }
+// }
