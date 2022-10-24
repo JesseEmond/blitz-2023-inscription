@@ -7,6 +7,7 @@ use crate::ant_colony_optimization::{Colony, HyperParams};
 use crate::challenge::{Solution, eval_score};
 use crate::game_interface::{GameTick};
 use crate::graph::{Graph, VertexId};
+use crate::held_karp::{held_karp};
 use crate::micro_ai::{Micro, State};
 use crate::pathfinding::{Pathfinder};
 
@@ -58,6 +59,11 @@ impl Macro {
         info!("A greedy bot would get us a score of {}, with {} ports",
               greedy_sln.score, greedy_sln.paths.len());
         info!("Greedy solution found in {:?}", greedy_start.elapsed());
+
+        let exact_tsp_start = Instant::now();
+        let tsp_sln = held_karp(&graph);
+        info!("An exact TSP bot would get us a score of {}", tsp_sln.score);
+        info!("Exact TSP solution found in {:?}", exact_tsp_start.elapsed());
 
         let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
             info!("[MACRO] Loading hyperparams from hyperparams.json.");
