@@ -61,7 +61,7 @@ impl Macro {
         info!("Greedy solution found in {:?}", greedy_start.elapsed());
 
         let exact_tsp_start = Instant::now();
-        let tsp_sln = held_karp(&graph);
+        let tsp_sln = held_karp(&graph).expect("No full TSP possible on this map");
         info!("An exact TSP bot would get us a score of {}", tsp_sln.score);
         info!("Exact TSP solution found in {:?}", exact_tsp_start.elapsed());
 
@@ -96,6 +96,12 @@ impl Macro {
                   greedy_sln.score, self.solution.as_ref().unwrap().score);
             self.solution = Some(greedy_sln);
         }
+        if tsp_sln.score > self.solution.as_ref().unwrap().score {
+            warn!("A TSP solution is better (duh!) {} > {}, using it.",
+                  tsp_sln.score, self.solution.as_ref().unwrap().score);
+            self.solution = Some(tsp_sln);
+        }
+
         info!("[MACRO] Our plan is the following: ");
         info!("[MACRO]   spawn on {spawn:?}", spawn = self.solution.as_ref().unwrap().spawn);
         for path in &self.solution.as_ref().unwrap().paths {

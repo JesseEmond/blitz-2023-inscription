@@ -70,8 +70,8 @@ pub struct Ant {
     pub seen: u64,  // mask of seen vertices
 }
 
-type EtaPows = ArrayVec<ArrayVec<f32, MAX_PORTS>, MAX_TICK_OFFSETS>;
-type EdgeWeights = ArrayVec<f32, MAX_PORTS>;
+// type EtaPows = ArrayVec<ArrayVec<f32, MAX_PORTS>, MAX_TICK_OFFSETS>;
+// type EdgeWeights = ArrayVec<f32, MAX_PORTS>;
 
 // Holds the trails coming out of a vertex, used for optimization purposes to
 // precompute Vecs of weights.
@@ -135,35 +135,35 @@ impl Ant {
         self.seen = 1u64 << start;
     }
 
-    fn visit(&mut self, port: VertexId, graph: &Graph) {
-        self.path.push(port);
-        self.tick_offset = (self.tick % graph.tick_offsets as u16) as u8;
-        let cost = graph.cost(self.tick_offset, self.current, port);
-        self.tick += (cost + 1) as u16;  // +1 to dock
-        self.score = self.compute_score(graph, /*simulate_to_end=*/false);
-        if self.seen & (1u64 << port) != 0 {
-            assert!(port == self.start,
-                    "visiting vertex not tagged as unseen (and not going home)");
-        }
-        self.seen |= 1u64 << port;
-        self.current = port;
-    }
+    // fn visit(&mut self, port: VertexId, graph: &Graph) {
+    //     self.path.push(port);
+    //     self.tick_offset = (self.tick % graph.tick_offsets as u16) as u8;
+    //     let cost = graph.cost(self.tick_offset, self.current, port);
+    //     self.tick += (cost + 1) as u16;  // +1 to dock
+    //     self.score = self.compute_score(graph, /*simulate_to_end=*/false);
+    //     if self.seen & (1u64 << port) != 0 {
+    //         assert!(port == self.start,
+    //                 "visiting vertex not tagged as unseen (and not going home)");
+    //     }
+    //     self.seen |= 1u64 << port;
+    //     self.current = port;
+    // }
 
-    fn compute_score(&self, graph: &Graph, simulate_to_end: bool) -> i32 {
-        if self.path.is_empty() {
-            return 0;
-        }
-        let looped = self.current == self.start;
-        let visits = self.path.len() + 1;  // +1 for spawn
-        let tick = if simulate_to_end && !looped {
-            graph.max_ticks
-        } else if looped {
-            self.tick - 1  // last docking home tick doesn't count
-        } else {
-            self.tick
-        };
-        eval_score(visits as u32, tick, looped)
-    }
+    // fn compute_score(&self, graph: &Graph, simulate_to_end: bool) -> i32 {
+    //     if self.path.is_empty() {
+    //         return 0;
+    //     }
+    //     let looped = self.current == self.start;
+    //     let visits = self.path.len() + 1;  // +1 for spawn
+    //     let tick = if simulate_to_end && !looped {
+    //         graph.max_ticks
+    //     } else if looped {
+    //         self.tick - 1  // last docking home tick doesn't count
+    //     } else {
+    //         self.tick
+    //     };
+    //     eval_score(visits as u32, tick, looped)
+    // }
 
     // Consider our score if we kept only our first 'num_edges' edges, plus a
     // trip back home, if there's enough ticks to do so.

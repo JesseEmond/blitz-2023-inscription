@@ -38,7 +38,8 @@ impl Graph {
                 game_tick.map.ports.len());
         let all_ports: ArrayVec<Pos, MAX_PORTS> = ArrayVec::from_iter(
             game_tick.map.ports.iter().map(Pos::from_position));
-        let mut adjacency: TickOffsetsAdjacency = vec![[[0; MAX_PORTS]; MAX_PORTS]];
+        let mut adjacency: TickOffsetsAdjacency = vec![[[0; MAX_PORTS]; MAX_PORTS];
+                                                       tick_offsets];
         let placeholder_path = Path {
             steps: Vec::new(), cost: 0, goal: Pos { x: 0, y: 0 }
         };
