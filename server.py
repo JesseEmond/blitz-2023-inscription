@@ -194,16 +194,16 @@ game_index = None
 game_scores = []
 client_process = None
 
-study_config = vz.StudyConfig.from_problem(vizier_problem_statement())
-study_config.algorithm = vz.Algorithm.RANDOM_SEARCH
-
-service = vizier_service.DefaultVizierService()
-clients.environment_variables.service_endpoint = service.endpoint
-study_client = clients.Study.from_study_config(
-    study_config, owner='emond', study_id='sweep')
-suggestions = []
-suggestion_idx = None
-rounds = 0
+if is_sweep:
+  study_config = vz.StudyConfig.from_problem(vizier_problem_statement())
+  study_config.algorithm = vz.Algorithm.RANDOM_SEARCH
+  service = vizier_service.DefaultVizierService()
+  clients.environment_variables.service_endpoint = service.endpoint
+  study_client = clients.Study.from_study_config(
+      study_config, owner='emond', study_id='sweep')
+  suggestions = []
+  suggestion_idx = None
+  rounds = 0
 
 
 def start_game():
