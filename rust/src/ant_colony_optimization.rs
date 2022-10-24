@@ -7,9 +7,8 @@ use rand::{Rng, SeedableRng};
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::rngs::SmallRng;
 
-use crate::game_interface::{eval_score};
+use crate::challenge::{Solution, eval_score};
 use crate::graph::{EdgeId, Graph, VertexId, MAX_VERTEX_EDGES, MAX_TICK_OFFSETS, MAX_VERTICES};
-use crate::pathfinding::{Path, Pos};
 
 // Based on the documentation at:
 // https://staff.washington.edu/paymana/swarm/stutzle99-eaecs.pdf
@@ -100,11 +99,6 @@ pub struct Colony {
     pub rng: SmallRng,
 }
 
-pub struct Solution {
-    pub score: i32,
-    pub spawn: Pos,
-    pub paths: Vec<Path>,
-}
 
 impl HyperParams {
     pub fn default_params(iterations: usize) -> Self {

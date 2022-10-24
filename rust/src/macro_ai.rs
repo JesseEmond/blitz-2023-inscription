@@ -3,8 +3,9 @@ use serde_json::{Value};
 use std::fs;
 use std::time::{Instant};
 
-use crate::ant_colony_optimization::{Colony, HyperParams, Solution};
-use crate::game_interface::{GameTick, eval_score};
+use crate::ant_colony_optimization::{Colony, HyperParams};
+use crate::challenge::{Solution, eval_score};
+use crate::game_interface::{GameTick};
 use crate::graph::{Graph, VertexId};
 use crate::micro_ai::{Micro, State};
 use crate::pathfinding::{Pathfinder};
@@ -54,7 +55,8 @@ impl Macro {
 
         let greedy_start = Instant::now();
         let greedy_sln = greedy_bot(&graph);
-        info!("A greedy bot would get us a score of {score}", score = greedy_sln.score);
+        info!("A greedy bot would get us a score of {}, with {} ports",
+              greedy_sln.score, greedy_sln.paths.len());
         info!("Greedy solution found in {:?}", greedy_start.elapsed());
 
         let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
@@ -80,8 +82,9 @@ impl Macro {
         self.solution = Some(colony.run());
         info!("Colony solution was found in {:?}", colony_start.elapsed());
         self.solution_idx = 0;
-        info!("[MACRO] Solution found has a score of {score}",
-              score = self.solution.as_ref().unwrap().score);
+        info!("[MACRO] Solution found has a score of {}, with {} ports",
+              self.solution.as_ref().unwrap().score,
+              self.solution.as_ref().unwrap().paths.len());
         if greedy_sln.score > self.solution.as_ref().unwrap().score {
             warn!("A greedy solution is better... {} > {}, using it.",
                   greedy_sln.score, self.solution.as_ref().unwrap().score);
