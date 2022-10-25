@@ -9,7 +9,8 @@ use rand::{SeedableRng};
 // use rand::distributions::{Distribution, WeightedIndex};
 use rand::rngs::SmallRng;
 
-use crate::challenge::{Solution, eval_score, MAX_PORTS, MAX_TICK_OFFSETS};
+// use crate::challenge::{Solution, eval_score, MAX_PORTS, MAX_TICK_OFFSETS};
+use crate::challenge::{Solution, MAX_PORTS};
 use crate::graph::{Graph, VertexId};
 use crate::pathfinding::{Pos};
 

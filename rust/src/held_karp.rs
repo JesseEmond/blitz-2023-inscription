@@ -10,11 +10,9 @@
 // the smallest distance.
 
 use arrayvec::ArrayVec;
-use log::{info};
 
 use crate::challenge::{Solution, eval_score, MAX_PORTS};
 use crate::graph::{Graph, VertexId};
-use crate::pathfinding::{Pos};
 
 // Size needed for an array indexed by masks.
 // We exclude the currently search city, so num_cities - 1.

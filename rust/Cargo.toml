@@ -6,7 +6,7 @@ edition = "2021"
 [profile.release]
 lto = true
 codegen-units = 1
-# debug = true  # Use only when profiling
+debug = true  # Use only when profiling
 
 [[bin]]
 name = "application" # Don't change this, our backend expects a fixed binary path
