@@ -1,9 +1,9 @@
 use log::{error, info, warn};
-use serde_json::{Value};
-use std::fs;
+// use serde_json::{Value};
+// use std::fs;
 use std::time::{Instant};
 
-use crate::ant_colony_optimization::{Colony, HyperParams};
+// use crate::ant_colony_optimization::{Colony, HyperParams};
 use crate::challenge::{Solution, eval_score};
 use crate::game_interface::{GameTick};
 use crate::graph::{Graph, VertexId};
@@ -61,42 +61,38 @@ impl Macro {
         info!("Greedy solution found in {:?}", greedy_start.elapsed());
 
         let exact_tsp_start = Instant::now();
-        let tsp_sln = held_karp(&graph, /*max_starts=*/3)
+        let tsp_sln = held_karp(&graph)
             .expect("No full TSP possible on this map");
         info!("An exact TSP bot (held-karp) would get us a score of {}", tsp_sln.score);
         info!("Exact TSP solution (held-karp) found in {:?}", exact_tsp_start.elapsed());
 
-        let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
-            info!("[MACRO] Loading hyperparams from hyperparams.json.");
-            let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
-            serde_json::from_value(parsed).expect("invalid hyperparams")
-        } else {
-            info!("[MACRO] Using default params.");
-            // Point(hyperparams=Hyperparams(iterations=464, ants=63, evaporation_rate=0.7800131108465345, exploitation_probability=0.3642226425600267, heuristic_power=2.5583485993720037, base_pheromones=2.0097671658359686, local_evaporation_rate=0.7523178610770483), score=3078.174695652174)
-            HyperParams {
-                iterations: 464,
-                ants: 63,
-                evaporation_rate: 0.7800131108465345,
-                exploitation_probability: 0.3642226425600267,
-                heuristic_power: 2.5583485993720037,
-                base_pheromones: 2.0097671658359686,
-                local_evaporation_rate: 0.7523178610770483
-            }
-        };
-        info!("[MACRO] Hyperparams: {hyperparams:?}");
-        let mut colony = Colony::new(graph, hyperparams, /*seed=*/42);
-        let colony_start = Instant::now();
-        self.solution = Some(colony.run());
-        info!("Colony solution was found in {:?}", colony_start.elapsed());
+        // let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
+        //     info!("[MACRO] Loading hyperparams from hyperparams.json.");
+        //     let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
+        //     serde_json::from_value(parsed).expect("invalid hyperparams")
+        // } else {
+        //     info!("[MACRO] Using default params.");
+        //     // Point(hyperparams=Hyperparams(iterations=464, ants=63, evaporation_rate=0.7800131108465345, exploitation_probability=0.3642226425600267, heuristic_power=2.5583485993720037, base_pheromones=2.0097671658359686, local_evaporation_rate=0.7523178610770483), score=3078.174695652174)
+        //     HyperParams {
+        //         iterations: 464,
+        //         ants: 63,
+        //         evaporation_rate: 0.7800131108465345,
+        //         exploitation_probability: 0.3642226425600267,
+        //         heuristic_power: 2.5583485993720037,
+        //         base_pheromones: 2.0097671658359686,
+        //         local_evaporation_rate: 0.7523178610770483
+        //     }
+        // };
+        // info!("[MACRO] Hyperparams: {hyperparams:?}");
+        // let mut colony = Colony::new(graph, hyperparams, /*seed=*/42);
+        // let colony_start = Instant::now();
+        // self.solution = Some(colony.run());
+        // info!("Colony solution was found in {:?}", colony_start.elapsed());
+        // info!("[MACRO] Solution found has a score of {}, with {} ports",
+        //       self.solution.as_ref().unwrap().score,
+        //       self.solution.as_ref().unwrap().paths.len());
         self.solution_idx = 0;
-        info!("[MACRO] Solution found has a score of {}, with {} ports",
-              self.solution.as_ref().unwrap().score,
-              self.solution.as_ref().unwrap().paths.len());
-        if greedy_sln.score > self.solution.as_ref().unwrap().score {
-            warn!("A greedy solution is better... {} > {}, using it.",
-                  greedy_sln.score, self.solution.as_ref().unwrap().score);
-            self.solution = Some(greedy_sln);
-        }
+        self.solution = Some(greedy_sln);
         if tsp_sln.score > self.solution.as_ref().unwrap().score {
             warn!("A TSP solution is better (duh!) {} > {}, using it.",
                   tsp_sln.score, self.solution.as_ref().unwrap().score);
