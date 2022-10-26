@@ -19,11 +19,21 @@ with open('access_token.priv', 'r') as f:
 
 
 def start_game() -> int:
-  r = requests.post(f'https://api.blitz.codes/practices/Inscription',
-                    data='{}', cookies={'access_token': access_token})
-  # TODO: handle server throttling retry?
+  def make_req():
+    return requests.post(f'https://api.blitz.codes/practices/Inscription',
+                         data='{}', cookies={'access_token': access_token})
+  r = make_req()
   assert r.status_code != 401, "Update your access_token!"
-  assert r.status_code // 100 == 2, (r.status_code, r.headers, r.content, r)
+  if r.status_code == 429:  # HTTP Too Many Requests
+    print(f'Oops! We are being throttled: {r.headers}')
+    retry = r.headers.get('Retry-After')
+    if not retry:
+      print(f'Huh, weird. Can\'t find a Retry-After header. Using 10mins to be safe.')
+      retry = str(10 * 60)
+    print(f'Waiting for {retry} seconds...')
+    time.sleep(int(retry))
+    r = make_req()
+  assert r.status_code // 100, (r.status_code, r.headers, r.content, r)
   data = json.loads(r.text)
   return data["id"]
 
@@ -98,7 +108,7 @@ def is_interesting_log_line(line: str) -> bool:
   return ('Graph was built in' in line or
           'greedy bot would get us' in line or
           'TSP bot' in line or
-          'Exact TSP solution' in line
+          'Exact TSP solution' in line or
           'Macro took ' in line)
 
 
@@ -113,18 +123,23 @@ def save_game(game: Tick, filename: str):
     json.dump(game.to_dict(), f)
 
 
-for i in range(num_games):
+i = 0
+while i < num_games:
   print(f'Starting game #{i+1}...')
   game_id = start_game()
   print(f'  waiting for game #{game_id}...')
-  time.sleep(5 * 60)
+  time.sleep(9 * 60)
   print('  downloading game logs...')
   logs = read_game_logs(game_id)
   game = extract_game(logs)
   print(f'  this was a {len(game.map.ports)} ports game')
+  if len(game.map.ports) < 20:
+    print('  skipping!')
+    continue
   print('  noteworthy:')
   for line in extract_interesting_lines(logs):
     print(f'  - {line}')
   filename = f'{output_folder}/{game_id}.json'
   print(f'  saving to {filename}...')
   save_game(game, filename)
+  i += 1
