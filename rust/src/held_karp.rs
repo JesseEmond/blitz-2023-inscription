@@ -10,6 +10,7 @@
 // the smallest distance.
 
 use arrayvec::ArrayVec;
+use log::info;
 
 use crate::challenge::{Solution, eval_score, MAX_PORTS};
 use crate::graph::{Graph, VertexId};
@@ -28,10 +29,9 @@ struct Tour {
     vertices: Vec<VertexId>,
 }
 
-pub fn held_karp(graph: &Graph) -> Option<Solution> {
+pub fn held_karp(graph: &Graph, max_starts: usize) -> Option<Solution> {
     let mut held_karp = HeldKarp::new();
-    // TODO: log score for each
-    (0..graph.ports.len())
+    (0..usize::min(graph.ports.len(), max_starts))
         .map(|start| held_karp.traveling_salesman(graph, start as VertexId))
         .min_by_key(|tour| tour.cost).unwrap().to_solution(graph)
 }
@@ -157,6 +157,7 @@ impl HeldKarp {
         }
         vertices.push(start);
         vertices.reverse();
+        info!("Starting at port ID {}, cost would be {}", start, total_cost);
         Tour { cost: total_cost, vertices: vertices, }
     }
 }

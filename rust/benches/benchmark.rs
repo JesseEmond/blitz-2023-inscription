@@ -3,6 +3,7 @@ use serde_json::{Value};
 use std::fs;
 
 use blitz_bot::ant_colony_optimization::{Colony, HyperParams};
+use blitz_bot::branch_and_bound_tsp::{branch_and_bound};
 use blitz_bot::held_karp::{held_karp};
 use blitz_bot::game_interface::{GameTick};
 use blitz_bot::graph::{Graph};
@@ -73,13 +74,23 @@ fn bench_held_karp(c: &mut Criterion) {
     let mut graph = Graph::new(&mut pathfinder, &game);
     graph.ports.truncate(18);
     c.bench_function("held_karp", |b| b.iter(|| {
-        held_karp(&graph)
+        held_karp(&graph, 99)
+    }));
+}
+
+fn bench_branch_and_bound(c: &mut Criterion) {
+    let game = make_game();
+    let mut pathfinder = make_pathfinder(&game);
+    let mut graph = Graph::new(&mut pathfinder, &game);
+    graph.ports.truncate(18);
+    c.bench_function("branch_and_bound", |b| b.iter(|| {
+        branch_and_bound(&graph)
     }));
 }
 
 criterion_group!{
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = bench_pathfind_only, bench_ant_colony_optimization_only, bench_full_tick0, bench_held_karp
+    targets = bench_pathfind_only, bench_ant_colony_optimization_only, bench_full_tick0, bench_held_karp, bench_branch_and_bound
 }
 criterion_main!(benches);

@@ -1,5 +1,6 @@
 pub mod ant_colony_optimization;
 pub mod bot;
+pub mod branch_and_bound_tsp;
 pub mod challenge;
 pub mod client;
 pub mod game_interface;

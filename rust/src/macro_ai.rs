@@ -61,9 +61,10 @@ impl Macro {
         info!("Greedy solution found in {:?}", greedy_start.elapsed());
 
         let exact_tsp_start = Instant::now();
-        let tsp_sln = held_karp(&graph).expect("No full TSP possible on this map");
-        info!("An exact TSP bot would get us a score of {}", tsp_sln.score);
-        info!("Exact TSP solution found in {:?}", exact_tsp_start.elapsed());
+        let tsp_sln = held_karp(&graph, /*max_starts=*/3)
+            .expect("No full TSP possible on this map");
+        info!("An exact TSP bot (held-karp) would get us a score of {}", tsp_sln.score);
+        info!("Exact TSP solution (held-karp) found in {:?}", exact_tsp_start.elapsed());
 
         let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
             info!("[MACRO] Loading hyperparams from hyperparams.json.");
