@@ -21,6 +21,8 @@ with open('access_token.priv', 'r') as f:
 def start_game() -> int:
   r = requests.post(f'https://api.blitz.codes/practices/Inscription',
                     data='{}', cookies={'access_token': access_token})
+  # TODO: handle server throttling retry?
+  assert r.status_code != 401, "Update your access_token!"
   assert r.status_code // 100 == 2, (r.status_code, r.headers, r.content, r)
   data = json.loads(r.text)
   return data["id"]
@@ -92,19 +94,37 @@ def extract_game(logs: str) -> Tick:
       isOver=is_over)
 
 
+def is_interesting_log_line(line: str) -> bool:
+  return ('Graph was built in' in line or
+          'greedy bot would get us' in line or
+          'TSP bot' in line or
+          'Exact TSP solution' in line
+          'Macro took ' in line)
+
+
+def extract_interesting_lines(logs: str) -> str:
+  lines = [line.strip() for line in logs.split('\n')]
+  interesting = [line for line in lines if is_interesting_log_line(line)]
+  return [line[line.index('] ') + 2:] for line in interesting]
+
+
 def save_game(game: Tick, filename: str):
   with open(filename, 'w') as f:
     json.dump(game.to_dict(), f)
 
 
 for i in range(num_games):
-  print(f'Starting game #{i}...')
+  print(f'Starting game #{i+1}...')
   game_id = start_game()
   print(f'  waiting for game #{game_id}...')
-  time.sleep(10 * 60)
+  time.sleep(5 * 60)
   print('  downloading game logs...')
   logs = read_game_logs(game_id)
   game = extract_game(logs)
+  print(f'  this was a {len(game.map.ports)} ports game')
+  print('  noteworthy:')
+  for line in extract_interesting_lines(logs):
+    print(f'  - {line}')
   filename = f'{output_folder}/{game_id}.json'
   print(f'  saving to {filename}...')
   save_game(game, filename)

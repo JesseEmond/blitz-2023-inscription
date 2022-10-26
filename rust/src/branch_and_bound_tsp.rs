@@ -19,7 +19,8 @@
 use arrayvec::ArrayVec;
 use log::{info};
 
-use crate::challenge::{Solution, MAX_PORTS};
+use crate::challenge::{Solution};
+use crate::challenge_consts::{MAX_PORTS, TICK_OFFSETS};
 use crate::graph::{Graph, VertexId};
 
 type Cost = u16;
@@ -57,7 +58,7 @@ impl SearchSpace {
                 let from = from as VertexId;
                 graph.others(from as VertexId).map(|to| {
                     let to = to as VertexId;
-                    (0..graph.tick_offsets).map(|t| graph.cost(t as u8, from, to))
+                    (0..TICK_OFFSETS).map(|t| graph.cost(t as u8, from, to))
                         .min().unwrap()
                 }).min().unwrap()
             })),
@@ -65,7 +66,7 @@ impl SearchSpace {
                 let to = to as VertexId;
                 graph.others(to as VertexId).map(|from| {
                     let from = from as VertexId;
-                    (0..graph.tick_offsets).map(|t| graph.cost(t as u8, from, to))
+                    (0..TICK_OFFSETS).map(|t| graph.cost(t as u8, from, to))
                         .min().unwrap()
                 }).min().unwrap()
             })),

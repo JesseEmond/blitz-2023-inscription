@@ -1,8 +1,5 @@
 use crate::pathfinding::{Path, Pos};
 
-pub const MAX_PORTS: usize = 20;
-pub const MAX_TICK_OFFSETS: usize = 32;
-
 pub fn eval_score(visits: u32, ticks: u16, looped: bool) -> i32 {
     let bonus = if looped { 2 } else { 1 };
     // The last visit back home doesn't count.

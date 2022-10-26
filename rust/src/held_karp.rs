@@ -12,7 +12,8 @@
 use arrayvec::ArrayVec;
 use log::info;
 
-use crate::challenge::{Solution, eval_score, MAX_PORTS};
+use crate::challenge::{Solution, eval_score};
+use crate::challenge_consts::{MAX_PORTS, TICK_OFFSETS};
 use crate::graph::{Graph, VertexId};
 
 // Size needed for an array indexed by masks.
@@ -100,11 +101,15 @@ impl HeldKarp {
                 // TODO: just do combinations on the array...?
                 // TODO: get the ones set with trailing_zeros() + (x&(x-1)) to
                 //       clear, repeat s times?
-                let set: ArrayVec<_, MAX_PORTS> = ArrayVec::from_iter(
-                    (0..graph.ports.len()).filter(|&k| {
-                        let mask = (1 << k) as Mask;
-                        subset_mask & mask != 0
-                    }));
+                let mut set: ArrayVec<_, MAX_PORTS> = ArrayVec::new();
+                for k in 0..graph.ports.len() {
+                    let mask = (1 << k) as Mask;
+                    if subset_mask & mask != 0 {
+                        unsafe {
+                            set.push_unchecked(k);
+                        }
+                    }
+                }
                 for k in &set {
                     let k = *k as VertexId;
                     let k_mask = (1 << k) as Mask;
@@ -205,7 +210,7 @@ impl Tour {
         for i in 1..self.vertices.len() {
             let from = self.vertices[i - 1];
             let to = self.vertices[i];
-            let offset = tick % (graph.tick_offsets as u16);
+            let offset = tick % (TICK_OFFSETS as u16);
             tick += graph.cost(offset as u8, from, to) as u16 + 1;
         }
         tick -= 1;

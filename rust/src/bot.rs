@@ -57,6 +57,14 @@ impl Bot {
         if game_tick.current_tick == 0 {
             self.ai_macro.init(game_tick);
         }
+        if self.ai_macro.give_up {
+            // Get a score of 0 by docking twice on the first port.
+            if game_tick.current_tick == 0 {
+                return Ok(Action::Spawn { position: game_tick.map.ports[0] });
+            } else {
+                return Ok(Action::Dock {});
+            }
+        }
 
         self.ai_macro.assign_state(&mut self.ai_micro, game_tick);
         let game_move = self.ai_micro.get_move(game_tick);
@@ -65,6 +73,6 @@ impl Bot {
     }
 
     pub fn is_done(&self, game_tick: &GameTick) -> bool {
-        game_tick.is_over || self.ai_macro.give_up
+        game_tick.is_over
     }
 }

@@ -37,7 +37,7 @@ impl Macro {
     pub fn init(&mut self, game_tick: &GameTick) {
         let macro_start = Instant::now();
         let schedule: Vec<u8> = game_tick.tide_schedule.iter().map(|&e| e as u8).collect();
-        self.pathfinder.grid.init(&game_tick.map, &schedule, game_tick.current_tick);
+        self.pathfinder.grid.init(&game_tick.map, &schedule);
 
         // This is a bit verbose, but we always want this on server.
         info!("--- TICK DUMP BEGIN ---");

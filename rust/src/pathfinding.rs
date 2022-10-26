@@ -3,6 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::iter;
 use priority_queue::PriorityQueue;
 
+use crate::challenge_consts::{HEIGHT, TICK_OFFSETS, WIDTH};
 use crate::game_interface::{Map, Position};
 
 // TODO: consider packing as u32?
@@ -30,14 +31,11 @@ fn chebyshev_distance(a: &Pos, b: &Pos) -> u16 {
 type Neighbors = ArrayVec<Pos, 8>;
 
 pub struct Grid {
-    tide_schedule: Vec<u8>,
-    start_tick: u16,
-    // TODO: consider representing 2 items per u8?
-    topology: Vec<Vec<u8>>,
-    width: usize,
-    height: usize,
-    // neighbors[y][x][tick_offset]
-    neighbors: Vec<Vec<Vec<Neighbors>>>,
+    tide_schedule: [u8; TICK_OFFSETS],
+    // topology [y][x]
+    topology: [[u8; WIDTH]; HEIGHT],
+    // neighbors[tick_offset][y][x]
+    neighbors: Vec<[[Neighbors; WIDTH]; HEIGHT]>,
 }
 
 impl Default for Grid {
@@ -49,46 +47,42 @@ impl Default for Grid {
 impl Grid {
     pub fn new() -> Self {
         Grid {
-            tide_schedule: Vec::new(),
-            topology: Vec::new(),
-            start_tick: 0,
-            width: 0,
-            height: 0,
-            neighbors: Vec::new(),
+            tide_schedule: [0; TICK_OFFSETS],
+            topology: [[0; WIDTH]; HEIGHT],
+            neighbors: vec![
+                array_init::array_init(|_| array_init::array_init(|_| Neighbors::new()));
+                TICK_OFFSETS],
         }
     }
 
-    pub fn init(&mut self, map: &Map, schedule: &[u8], tick: u16) {
+    pub fn init(&mut self, map: &Map, schedule: &[u8]) {
         let topology = &map.topology.0;
-        self.topology = topology.iter().map(
-            |row| row.iter().map(|&e| e as u8).collect()).collect();
-        self.height = topology.len();
-        self.width = topology[0].len();
-        self.tide_schedule = schedule.to_owned();
-        self.start_tick = tick;
+        self.topology = array_init::array_init(
+            |y| array_init::array_init(|x| topology[y][x] as u8));
+        assert!(schedule.len() == TICK_OFFSETS, "Unsupported schedule len: {}",
+                schedule.len());
+        self.tide_schedule = array_init::from_iter(schedule.to_owned()).unwrap();
         self.neighbors.clear();
-        for y in 0..self.height {
-            let y = y as u16;
-            let mut row: Vec<Vec<Neighbors>> = Vec::with_capacity(self.width);
-            for x in 0..self.width {
-                let x = x as u16;
-                let mut col: Vec<Neighbors> = Vec::with_capacity(self.tide_schedule.len());
-                for tick_offset in 0..self.tide_schedule.len() {
-                    let tick_offset = tick_offset as u16;
-                    let neighbors = self.neighbors(Pos { x, y }, tick_offset);
-                    col.push(ArrayVec::from_iter(neighbors));
-                }
-                row.push(col);
-            }
-            self.neighbors.push(row);
+        for t in 0..TICK_OFFSETS {
+            let tick_neighbors = array_init::array_init(
+                |y| array_init::array_init(|x| {
+                    let t = t as u16;
+                    let y = y as u16;
+                    let x = x as u16;
+                    let neighbors = self.neighbors(Pos { x, y }, t);
+                    Neighbors::from_iter(neighbors)
+                }));
+            self.neighbors.push(tick_neighbors);
         }
     }
 
+    #[inline]
     pub fn tide(&self, tick: u16) -> u8 {
-        let idx = ((tick - self.start_tick) as usize) % self.tide_schedule.len();
-        self.tide_schedule[idx]
+        let idx = tick % (TICK_OFFSETS as u16);
+        self.tide_schedule[idx as usize]
     }
 
+    #[inline]
     pub fn navigable(&self, pos: &Pos, tick: u16) -> bool {
         self.topology[pos.y as usize][pos.x as usize] < self.tide(tick)
     }
@@ -104,8 +98,8 @@ impl Grid {
                     x: (pos.x as i32 + dx) as u16,
                     y: (pos.y as i32 + dy) as u16
                 };
-                if neighbor.x < self.width as u16 &&
-                    neighbor.y < self.height as u16
+                if neighbor.x < WIDTH as u16 &&
+                    neighbor.y < HEIGHT as u16
                     && self.navigable(&neighbor, tick) {
                     Some(neighbor)
                 } else {
@@ -206,9 +200,20 @@ impl Pathfinder {
         frontier.push(start_state, 0);
         self.came_from.insert(start_state, start_state);
         self.cost_so_far.insert(start_state, 0);
+        let mut early_explore: Option<(State, u16)> = None;
 
         while !frontier.is_empty() {
-            let (current, _) = frontier.pop().unwrap();
+            // Optimization: a node can skip the frontier if it has a score <=
+            // the current one when being considered as a successor.
+            let (current, current_f_score) = match early_explore {
+                Some((option, score)) => (option, score),
+                None => {
+                    let (option, priority) = frontier.pop().unwrap();
+                    let f_score = (-priority) as u16;
+                    (option, f_score)
+                },
+            };
+            early_explore = None;
             let cost = *self.cost_so_far.get(&current).unwrap();
             let current_tick = tick + cost;
 
@@ -223,8 +228,8 @@ impl Pathfinder {
                 break;
             }
 
-            let tick_offset = current_tick % (self.grid.tide_schedule.len() as u16);
-            let neighbors = self.grid.neighbors[current.position().y as usize][current.position().x as usize][tick_offset as usize]
+            let tick_offset = current_tick % (TICK_OFFSETS as u16);
+            let neighbors = self.grid.neighbors[tick_offset as usize][current.position().y as usize][current.position().x as usize]
                 .iter().map(|&n| State::new(n, 0));
             let wait_here = iter::once(
                 State::new(current.position(), current.wait() + 1));
@@ -232,7 +237,7 @@ impl Pathfinder {
             let forced_wait = !self.grid.navigable(&current.position(),
                                                     current_tick);
             // No point in waiting longer than a full tide cycle.
-            let consider_wait = (current.wait() as usize) < self.grid.tide_schedule.len();
+            let consider_wait = (current.wait() as usize) < TICK_OFFSETS;
             let options = neighbors.filter(|_| !forced_wait)
                 .chain(wait_here.filter(|_| consider_wait || forced_wait));
 
@@ -241,9 +246,24 @@ impl Pathfinder {
                 let old_cost = self.cost_so_far.get(&next).cloned();
                 if old_cost.is_none() || new_cost < old_cost.unwrap() {
                     self.cost_so_far.insert(next, new_cost);
-                    let priority = new_cost + heuristic(&next.position(), &targets);
-                    frontier.push(next, -(priority as i32));
+                    let f = new_cost + heuristic(&next.position(), &targets);
                     self.came_from.insert(next, current);
+                    // This is a candidate for early exploration (skip frontier)
+                    let better_early_explore = match early_explore {
+                        Some((_, score)) => f < score,
+                        None => true,
+                    };
+                    if f <= current_f_score && better_early_explore {
+                        if let Some((option, score)) = early_explore {
+                            // No longer the best, needs to go in the frontier
+                            let priority = -(score as i32);
+                            frontier.push(option, priority);
+                        }
+                        early_explore = Some((next, f));
+                    } else {
+                        let priority = -(f as i32);
+                        frontier.push(next, priority);
+                    }
                 }
             }
         }
@@ -307,7 +327,7 @@ impl Pathfinder {
         &mut self, start: &Pos, targets: &Targets, tick: u16
         ) -> FxHashMap<Pos, Vec<Path>> {
         let mut out = FxHashMap::default();
-        for offset in 0..self.grid.tide_schedule.len() {
+        for offset in 0..TICK_OFFSETS {
             let tick = tick + (offset as u16);
             let all_paths = self.paths_to_all_targets(start, targets, tick);
             for (target, path) in &all_paths {
@@ -317,7 +337,7 @@ impl Pathfinder {
                     .or_insert_with(|| vec![path.clone()]);
             }
         }
-        assert!(out.values().all(|v| v.len() == self.grid.tide_schedule.len()));
+        assert!(out.values().all(|v| v.len() == TICK_OFFSETS));
         out
     }
 }

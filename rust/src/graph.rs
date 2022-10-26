@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use log::{debug, info};
 use std::collections::{HashSet};
 
-use crate::challenge::{MAX_PORTS, MAX_TICK_OFFSETS};
+use crate::challenge_consts::{MAX_PORTS, TICK_OFFSETS};
 use crate::game_interface::{GameTick};
 use crate::pathfinding::{Path, Pathfinder, Pos};
 
@@ -19,7 +19,6 @@ pub struct Graph {
     pub adjacency: TickOffsetsAdjacency,
     // paths[tick_offset][from][to]
     pub paths: Paths,
-    pub tick_offsets: usize,
     pub ports: ArrayVec<Pos, MAX_PORTS>,
     // Tick where paths were computed. Offsets must be computed off of this.
     pub start_tick: u16,
@@ -30,8 +29,8 @@ impl Graph {
     pub fn new(pathfinder: &mut Pathfinder, game_tick: &GameTick) -> Self {
         let tick = game_tick.current_tick as u16;
         let tick_offsets = game_tick.tide_schedule.len();
-        assert!(tick_offsets <= MAX_TICK_OFFSETS,
-                "Bigger tick schedule that we support: {}. Update max.",
+        assert!(tick_offsets == TICK_OFFSETS,
+                "Expected a fixed tick schedule, got: {}",
                 tick_offsets);
         assert!(game_tick.map.ports.len() <= MAX_PORTS,
                 "More ports than we support: {}. Update max.",
@@ -79,7 +78,6 @@ impl Graph {
         Graph {
             adjacency,
             paths,
-            tick_offsets,
             ports: all_ports,
             start_tick: tick + 1,  // time to spawn
             max_ticks: game_tick.total_ticks as u16,
@@ -98,7 +96,8 @@ impl Graph {
         &self.paths[tick_offset as usize][from as usize][to as usize]
     }
 
+    #[inline]
     pub fn tick_offset(&self, tick: u16) -> u8 {
-        (tick % (self.tick_offsets as u16)) as u8
+        (tick % (TICK_OFFSETS as u16)) as u8
     }
 }
