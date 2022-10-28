@@ -77,7 +77,7 @@ impl HeldKarp {
         let start_tick = graph.start_tick + 1;  // time to dock spawn
 
         // TODO: try having g[mask][b][e], computing all starts at once?
-        // TODO: precompute lower-bound for all g[mask]? skip computations that
+        // TODO: precompute lower-bound for all g[mask]? skip computations 
         // with lower-bound > seen? (branch & bound idea)
         // TODO: try a const 20 cities?
 

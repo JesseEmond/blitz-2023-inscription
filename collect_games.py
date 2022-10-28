@@ -33,7 +33,13 @@ def start_game() -> int:
     print(f'Waiting for {retry} seconds...')
     time.sleep(int(retry))
     r = make_req()
-  assert r.status_code // 100, (r.status_code, r.headers, r.content, r)
+  is_ok = r.status_code // 100
+  if not is_ok:
+    print(f'Oops. Unexpected error...? Waiting 10 mins and retrying.')
+    time.sleep(10 * 60)
+    r = make_req()
+    is_ok = r.status_code // 100
+  assert is_ok, (r.status_code, r.headers, r.content, r)
   data = json.loads(r.text)
   return data["id"]
 
