@@ -62,14 +62,6 @@ impl Macro {
         info!("Greedy bot summary");
         summarize_solution(&greedy_sln, &graph);
 
-        let exact_tsp_start = Instant::now();
-        let tsp_sln = held_karp(&graph)
-            .expect("No full TSP possible on this map");
-        info!("An exact TSP bot (held-karp) would get us a score of {}", tsp_sln.score);
-        info!("Exact TSP solution (held-karp) found in {:?}", exact_tsp_start.elapsed());
-        info!("Here is the TSP solution:");
-        summarize_solution(&tsp_sln, &graph);
-
         let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
             info!("[MACRO] Loading hyperparams from hyperparams.json.");
             let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
@@ -96,6 +88,14 @@ impl Macro {
               colony_sln.score, colony_sln.paths.len());
         info!("Colony solution summary:");
         summarize_solution(&colony_sln, &graph);
+
+        let exact_tsp_start = Instant::now();
+        let tsp_sln = held_karp(&graph).expect("No full TSP possible on this map");
+        info!("An exact TSP bot (held-karp) would get us a score of {}", tsp_sln.score);
+        info!("Exact TSP solution (held-karp) found in {:?}", exact_tsp_start.elapsed());
+        info!("Here is the TSP solution:");
+        summarize_solution(&tsp_sln, &graph);
+
         self.solution = Some(colony_sln);
         self.solution_idx = 0;
         // self.solution = Some(greedy_sln);

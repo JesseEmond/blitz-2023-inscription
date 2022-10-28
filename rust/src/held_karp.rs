@@ -17,7 +17,7 @@ use crate::challenge_consts::{MAX_PORTS, TICK_OFFSETS};
 use crate::graph::{Graph, VertexId};
 
 // Size needed for an array indexed by masks.
-const NUM_MASKS: usize = 1 << MAX_PORTS;
+const NUM_MASKS: usize = 1 << (MAX_PORTS - 1);
 
 // Mask of whether a city 'i' was seen (bit (1 << i)).
 // Must set the lower bits, since this is used directly as an index in an array.
@@ -30,18 +30,20 @@ struct Tour {
 }
 
 pub fn held_karp(graph: &Graph) -> Option<Solution> {
-    let tour = HeldKarp::new().traveling_salesman(graph);
+    let mut held_karp = HeldKarp::new();
+    let tour = (0..graph.ports.len())
+        .map(|v| v as VertexId)
+        .map(|start| held_karp.traveling_salesman(graph, start))
+        .min_by_key(|t| t.cost).unwrap();
     tour.verify_tour(graph);
     tour.to_solution(graph)
 }
 
 // Costs g(S, e) for a fixed 'S', for possible values of 'e'.
-type SubsetCosts = [Cost; MAX_PORTS];
+type SubsetCosts = [Cost; MAX_PORTS - 1];
 // Pointer to the before-last city visited for a given mask.
 // I.e., the last city that we used to reach the given last city (index) 'e'.
-type Predecessors = [VertexId; MAX_PORTS];
-// Pointer to the city we started with, for a given mask/last city.
-type Starts = [VertexId; MAX_PORTS];
+type Predecessors = [VertexId; MAX_PORTS - 1];
 
 struct HeldKarp {
     // This is the g(S, e) that gives us, for a given 'S', the minimal cost of
@@ -50,10 +52,6 @@ struct HeldKarp {
     // This is p(S, e) that gives us, for a given 'S', the predecessor city that
     // we visited to end up to each possible 'e' cities.
     p: Vec<Predecessors>,
-    // Because our starting vertex influences edge costs, on top of Held-Karp we
-    // consider all possible starts in our search and keep track for a given
-    // g(S, e) what starting node was used.
-    s: Vec<Starts>,
 }
 
 // Generate the lexicographically next bit permutation for a pattern of N bits
@@ -70,28 +68,41 @@ fn next_mask(mask: Mask) -> Mask {
 impl HeldKarp {
     pub fn new() -> Self {
         HeldKarp {
-            g: vec![[0; MAX_PORTS]; NUM_MASKS],
-            p: vec![[0; MAX_PORTS]; NUM_MASKS],
-            s: vec![[0; MAX_PORTS]; NUM_MASKS],
+            g: vec![[0; { MAX_PORTS - 1 }]; NUM_MASKS],
+            p: vec![[0; { MAX_PORTS - 1 }]; NUM_MASKS],
         }
     }
 
-    pub fn traveling_salesman(&mut self, graph: &Graph) -> Tour {
+    pub fn traveling_salesman(&mut self, graph: &Graph, start: VertexId) -> Tour {
         let start_tick = graph.start_tick + 1;  // time to dock spawn
 
+        // TODO: try having g[mask][b][e], computing all starts at once?
+        // TODO: precompute lower-bound for all g[mask]? skip computations that
+        // with lower-bound > seen? (branch & bound idea)
+        // TODO: try a const 20 cities?
+
+        // Masks are in the space where the 'start' vertex is removed, these
+        // utilities are used to convert to/from the vertex IDs.
+        // TODO: try as an array?
+        let translate = |v: VertexId| if v <= start { v } else { v - 1 };
+        let untranslate = |v: VertexId| if v < start { v } else { v + 1 };
+
         // Initialize for |S|=1 (with S = {k})
-        for k in 0..graph.ports.len() {
-            let k = k as VertexId;
+        for k in graph.others(start) {
+            let k = translate(k);
             let mask = (1 << k) as Mask;
-            // Initial cost is just the start tick (+1 to dock spawn)
-            self.g[mask as usize][k as usize] = start_tick + 1;
+            // Start at +1 to dock spawn.
+            let tick = start_tick + 1;
+            // Initial cost is the start tick, plus cost from spawn to 'k'.
+            let cost = graph.cost(graph.tick_offset(tick), start, untranslate(k));
+            // +1 to dock 'k'
+            self.g[mask as usize][k as usize] = tick + (cost as Cost) + 1;
             self.p[mask as usize][k as usize] = k;
-            self.s[mask as usize][k as usize] = k;
         }
 
         // From |S|=s, deduce S' (|S'| = s+1) g(S', k) by picking the
         // before-last city that minimizes cost, for each k.
-        let max_submask_items = graph.ports.len();
+        let max_submask_items = graph.ports.len() - 1;
         for s in 2..=max_submask_items {
             // Gives a mask with the 's' last bits set to 1.
             let mut subset_mask = ((1 << s) - 1) as Mask;
@@ -102,7 +113,8 @@ impl HeldKarp {
                 // TODO: get the ones set with trailing_zeros() + (x&(x-1)) to
                 //       clear, repeat s times?
                 let mut set: ArrayVec<_, MAX_PORTS> = ArrayVec::new();
-                for k in 0..graph.ports.len() {
+                for k in graph.others(start) {
+                    let k = translate(k);
                     let mask = (1 << k) as Mask;
                     if subset_mask & mask != 0 {
                         unsafe {
@@ -114,20 +126,18 @@ impl HeldKarp {
                     let k = *k as VertexId;
                     let k_mask = (1 << k) as Mask;
                     let no_k_submask = subset_mask & !k_mask;
-                    let (m, m_cost, start) = set.iter()
+                    let (m, m_cost) = set.iter()
                         .filter(|&m| (*m as VertexId) != k).map(|&m| {
                         let m = m as VertexId;
                         let current_cost = self.g[no_k_submask as usize][m as usize];
                         let tick = current_cost;
                         let tick_offset = graph.tick_offset(tick);
-                        let m_k_cost = graph.cost(tick_offset, m, k);
+                        let m_k_cost = graph.cost(tick_offset, untranslate(m), untranslate(k));
                         let cost = current_cost + (m_k_cost as Cost);
-                        let start = self.s[no_k_submask as usize][m as usize];
-                        (m, cost, start)
-                    }).min_by_key(|&(_, cost, _)| cost).unwrap();
+                        (m, cost)
+                    }).min_by_key(|&(_, cost)| cost).unwrap();
                     self.g[subset_mask as usize][k as usize] = m_cost + 1;
                     self.p[subset_mask as usize][k as usize] = m;
-                    self.s[subset_mask as usize][k as usize] = start;
                 }
 
                 subset_mask = next_mask(subset_mask);
@@ -136,17 +146,16 @@ impl HeldKarp {
 
         // Find the best tour by checking paths back to each start.
         let all_mask = ((1 << max_submask_items) - 1) as Mask;
-        let (last_city, total_cost, start) = (0..graph.ports.len()).map(|k| {
-            let k = k as VertexId;
+        let (last_city, total_cost) = graph.others(start).map(|k| {
+            let k = translate(k);
             let current_cost = self.g[all_mask as usize][k as usize];
-            let start = self.s[all_mask as usize][k as usize];
             let tick = current_cost;
             let tick_offset = graph.tick_offset(tick);
-            let k_start_cost = graph.cost(tick_offset, k, start);
+            let k_start_cost = graph.cost(tick_offset, untranslate(k), start);
             // Note: no "+ 1" for docking, the last dock tick doesn't count.
             let cost = current_cost + (k_start_cost as Cost);
-            (k, cost, start)
-        }).min_by_key(|&(_, cost, _)| cost).unwrap();
+            (k, cost)
+        }).min_by_key(|&(_, cost)| cost).unwrap();
 
         // Backtrack to get vertices.
         let mut vertices = Vec::with_capacity(graph.ports.len() + 1);
@@ -154,7 +163,7 @@ impl HeldKarp {
         let mut vertex = last_city;
         let mut mask = all_mask;
         while mask != 0 {
-            vertices.push(vertex);
+            vertices.push(untranslate(vertex));
             let prev_vertex = vertex;
             vertex = self.p[mask as usize][vertex as usize];
             mask &= !(1 << prev_vertex);
@@ -169,10 +178,9 @@ impl HeldKarp {
     fn _show(&self, graph: &Graph, mask: Mask, e: VertexId) -> String {
         let g = self.g[mask as usize][e as usize];
         let p = self.p[mask as usize][e as usize];
-        let s = self.s[mask as usize][e as usize];
-        format!("g({mask}, {e}) = {g}   p({mask}, {e}) = {p}   s({mask}, {e}) = {s}",
+        format!("g({mask}, {e}) = {g}   p({mask}, {e}) = {p}",
                 mask = self._show_mask(graph, mask),
-                e = e + 1, p = p + 1, s = s + 1)
+                e = e + 1, p = p + 1)
     }
 
     // Use for debugging

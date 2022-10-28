@@ -1,5 +1,5 @@
 // TODOs
-// - fix ACO
+// - Debug Held-Karp doing worse than ACO......
 // - implement "slow" pathfinding
 // - implement "slow" held-karp
 // - write-up outline
