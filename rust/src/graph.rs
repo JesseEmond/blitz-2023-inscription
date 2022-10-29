@@ -85,9 +85,12 @@ impl Graph {
     }
 
     pub fn cost(&self, tick_offset: u8, from: VertexId, to: VertexId) -> Cost {
-        self.adjacency[tick_offset as usize][from as usize][to as usize]
+        unsafe {
+            *self.adjacency.get_unchecked(tick_offset as usize).get_unchecked(from as usize).get_unchecked(to as usize)
+        }
     }
 
+    #[inline]
     pub fn others(&self, from: VertexId) -> impl Iterator<Item=VertexId> + '_ {
         (0..self.ports.len()).map(|v| v as VertexId).filter(move |&v| v != from)
     }

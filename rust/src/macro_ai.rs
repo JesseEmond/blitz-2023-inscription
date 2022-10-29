@@ -112,6 +112,8 @@ impl Macro {
                   goal = path.goal, cost = path.cost);
         }
         info!("Macro took {:?}", macro_start.elapsed());
+
+        panic!("Fast enough?");
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {
