@@ -9,14 +9,12 @@ use crate::pathfinding::{Path, Pathfinder, Pos};
 pub type Cost = u8;
 pub type VertexId = u8;
 
-type Adjacency = [[Cost; MAX_PORTS]; MAX_PORTS];
-type TickOffsetsAdjacency = Vec<Adjacency>;
 type Paths = Vec<Vec<Vec<Path>>>;
 
 #[derive(Clone, Debug)]
 pub struct Graph {
-    // adjacency[tick_offset][from][to]
-    pub adjacency: TickOffsetsAdjacency,
+    // adjacency[to][tick_offset][from]
+    pub adjacency: Vec<[[Cost; MAX_PORTS]; TICK_OFFSETS]>,
     // paths[tick_offset][from][to]
     pub paths: Paths,
     pub ports: ArrayVec<Pos, MAX_PORTS>,
@@ -37,8 +35,7 @@ impl Graph {
                 game_tick.map.ports.len());
         let all_ports: ArrayVec<Pos, MAX_PORTS> = ArrayVec::from_iter(
             game_tick.map.ports.iter().map(Pos::from_position));
-        let mut adjacency: TickOffsetsAdjacency = vec![[[0; MAX_PORTS]; MAX_PORTS];
-                                                       tick_offsets];
+        let mut adjacency: Vec<_> = vec![[[0; MAX_PORTS]; TICK_OFFSETS]; MAX_PORTS];
         let placeholder_path = Path {
             steps: Vec::new(), cost: 0, goal: Pos { x: 0, y: 0 }
         };
@@ -61,7 +58,7 @@ impl Graph {
                         .expect("No path between 2 ports, won't score high -- skip.");
                     for (offset, path) in offset_paths.iter().enumerate() {
                         assert!(path.cost < 256, "Path cost too high for u8.");
-                        adjacency[offset][source_idx][target_idx] = path.cost as Cost;
+                        adjacency[target_idx][offset][source_idx] = path.cost as Cost;
                         paths[offset][source_idx][target_idx] = path.clone();
                         // Verify individual paths -- for debugging purposes only.
                         // let dist = pathfinder.distance(port, target, tick + (offset as u16));
@@ -86,7 +83,7 @@ impl Graph {
 
     pub fn cost(&self, tick_offset: u8, from: VertexId, to: VertexId) -> Cost {
         unsafe {
-            *self.adjacency.get_unchecked(tick_offset as usize).get_unchecked(from as usize).get_unchecked(to as usize)
+            *self.adjacency.get_unchecked(to as usize).get_unchecked(tick_offset as usize).get_unchecked(from as usize)
         }
     }
 
