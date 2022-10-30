@@ -13,10 +13,42 @@ pub type VertexId = u8;
 
 type Paths = Vec<Vec<Vec<Path>>>;
 
-#[derive(Clone, Debug)]
+// Pack cost options for each possible tick_offset in a u64 to use up less space
+// and reduce cache misses.
+// 8 bits for the 'base' cost
+// 4 bits per 'offset' added to base, for each tick offset possible
+// 8 + 10 * 4 = 48, which fits in 64 bits.
+#[derive(Copy, Clone)]
+struct EdgeCosts(u64);
+
+impl EdgeCosts {
+    pub fn pack(costs: [Cost; TICK_OFFSETS]) -> Self {
+        let base = *costs.iter().min().unwrap();
+        let mut packed: u64 = base as u64;
+        for (t, cost) in costs.iter().enumerate() {
+            let diff = cost - base;
+            // Note: in reality at worst we'll wait for a full tick offset cycle
+            assert!(diff < 16);
+            let shift = 8 + 4 * t;
+            packed |= (diff as u64) << shift;
+        }
+        EdgeCosts(packed)
+    }
+
+    pub fn cost(&self, tick_offset: u8) -> Cost {
+        let base: Cost = (self.0 & 0xFF) as Cost;
+        let shift = 8 + 4 * tick_offset;
+        let diff = ((self.0 >> shift) & 0x0F) as Cost;
+        base + diff
+    }
+}
+
+#[derive(Clone)]
 pub struct Graph {
-    // adjacency[to][tick_offset][from]
-    pub adjacency: Vec<[[Cost; MAX_PORTS]; TICK_OFFSETS]>,
+    // adjacency[to][from]
+    // Note, storing [to][from] because Held-Karp iterates over 'to' options in
+    // its hot loop.
+    adjacency: [[EdgeCosts; MAX_PORTS]; MAX_PORTS],
     // paths[tick_offset][from][to]
     pub paths: Paths,
     pub ports: ArrayVec<Pos, MAX_PORTS>,
@@ -37,7 +69,7 @@ impl Graph {
                 game_tick.map.ports.len());
         let all_ports: ArrayVec<Pos, MAX_PORTS> = ArrayVec::from_iter(
             game_tick.map.ports.iter().map(Pos::from_position));
-        let mut adjacency: Vec<_> = vec![[[0; MAX_PORTS]; TICK_OFFSETS]; MAX_PORTS];
+        let mut adjacency = [[EdgeCosts(u64::MAX); MAX_PORTS]; MAX_PORTS];
         let placeholder_path = Path {
             steps: Vec::new(), cost: 0, goal: Pos { x: 0, y: 0 }
         };
@@ -78,7 +110,6 @@ impl Graph {
                         .expect("No path between 2 ports, won't score high -- skip.");
                     for (offset, path) in offset_paths.iter().enumerate() {
                         assert!(path.cost < 256, "Path cost too high for u8.");
-                        adjacency[target_idx][offset][source_idx] = path.cost as Cost;
                         paths[offset][source_idx][target_idx] = path.clone();
                         // Verify individual paths -- for debugging purposes only.
                         // let dist = pathfinder.distance(port, target, tick + (offset as u16));
@@ -86,6 +117,9 @@ impl Graph {
                         //         "from {:?} to {:?} get direct cost of {}, but computed {}",
                         //         port, target, dist.unwrap(), path.cost);
                     }
+                    let all_costs: [Cost; TICK_OFFSETS] = array_init::array_init(
+                        |t| offset_paths[t].cost as Cost);
+                    adjacency[target_idx][source_idx] = EdgeCosts::pack(all_costs);
                 }
                 // For source_idx == target_idx (diagonal), leave the defaults
             }
@@ -106,7 +140,7 @@ impl Graph {
 
     pub fn cost(&self, tick_offset: u8, from: VertexId, to: VertexId) -> Cost {
         unsafe {
-            *self.adjacency.get_unchecked(to as usize).get_unchecked(tick_offset as usize).get_unchecked(from as usize)
+            self.adjacency.get_unchecked(to as usize).get_unchecked(from as usize).cost(tick_offset)
         }
     }
 
