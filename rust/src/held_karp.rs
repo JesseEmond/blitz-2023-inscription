@@ -200,6 +200,7 @@ impl HeldKarp {
                 set[i] = set[i+1];
             }
         }
+        vertices.push(start);
         vertices.reverse();
         info!("Starting at port ID {}, cost would be {}, vertices: {vertices:?}",
               start, total_cost);
