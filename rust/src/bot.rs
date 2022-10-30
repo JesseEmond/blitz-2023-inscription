@@ -1,6 +1,4 @@
 // TODOs
-// - Try packing costs (smaller cache size than locally)
-// - Try run max N starts
 // - Try single Held-Karp run with graph that has averages for edge costs
 // - Lowerbounds...? skip paths that have >= 'inefficiencies' from first run?
 // - Push to server, run in a loop

@@ -34,16 +34,17 @@ struct Tour {
     vertices: Vec<VertexId>,
 }
 
-pub fn held_karp(graph: &Arc<Graph>) -> Option<Solution> {
+pub fn held_karp(graph: &Arc<Graph>, max_starts: usize) -> Option<Solution> {
     let mut best_tour = Tour { cost: Cost::MAX, vertices: Vec::new() };
     let mut handles = vec![];
     let (tx, rx) = mpsc::channel();
-    for i in 0..NUM_THREADS {
+    for i in 0..usize::min(NUM_THREADS, max_starts) {
         let tx = tx.clone();
         let graph = graph.clone();
         handles.push(thread::spawn(move || {
             let mut held_karp = HeldKarp::new();
-            for start in (i..graph.ports.len()).step_by(NUM_THREADS) {
+            for start in (i..usize::min(max_starts, graph.ports.len()))
+                .step_by(NUM_THREADS) {
                 let tour = held_karp.traveling_salesman(&graph,
                                                         start as VertexId);
                 tour.verify_tour(&graph);

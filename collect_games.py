@@ -113,8 +113,8 @@ def extract_game(logs: str) -> Tick:
 def is_interesting_log_line(line: str) -> bool:
   return ('Graph was built in' in line or
           'greedy bot would get us' in line or
-          'TSP bot' in line or
-          'Exact TSP solution' in line or
+          'TSP bot (held-karp)' in line or
+          'TSP solution (held-karp)' in line or
           'Macro took ' in line)
 
 
