@@ -97,19 +97,24 @@ impl Macro {
         info!("Here is the TSP solution:");
         summarize_solution(&tsp_sln, &graph);
 
-        self.solution = Some(colony_sln);
         self.solution_idx = 0;
+
+        self.solution = Some(colony_sln);
+        // NOTE: Using warnings here so that this shows up in evals where we
+        // turn off info logs... This is a bit needlessly hacky.
         if greedy_sln.score > self.solution.as_ref().unwrap().score {
             warn!("A greedy solution is better {} > {}, using it.",
                   greedy_sln.score, self.solution.as_ref().unwrap().score);
             self.solution = Some(greedy_sln);
         }
-        assert!(tsp_sln.score >= self.solution.as_ref().unwrap().score,
-                "TSP worse??? Bug.");
         if tsp_sln.score > self.solution.as_ref().unwrap().score {
             warn!("A TSP solution is better (duh!) {} > {}, using it.",
                   tsp_sln.score, self.solution.as_ref().unwrap().score);
             self.solution = Some(tsp_sln);
+        } else if tsp_sln.score < self.solution.as_ref().unwrap().score {
+            assert!(tsp_sln.paths.len() > self.solution.as_ref().unwrap().paths.len(),
+                    "Exact TSP gives a worse solution for a full tour. That's a bug.");
+            warn!("TSP solution is worse, because a tour with <20 cities is better.");
         }
 
         info!("[MACRO] Our plan is the following: ");

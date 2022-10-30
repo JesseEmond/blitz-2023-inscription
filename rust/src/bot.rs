@@ -1,5 +1,4 @@
 // TODOs
-// - Debug Held-Karp doing worse than ACO on #5126 
 // - Multithreaded pathfinding
 // - Push to server, run in a loop
 // - implement "slow" pathfinding

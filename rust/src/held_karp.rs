@@ -244,6 +244,8 @@ impl HeldKarp {
     fn _debug_tour(&mut self, tour: &Tour, graph: &Graph) {
         let start = tour.vertices[0];
         let our_tour = self.traveling_salesman(graph, start);
+        assert!(our_tour.vertices.len() == tour.vertices.len(),
+                "There's an optimal solution with < 20 cities");
 
         // Used for creating sets, in a space where 'start' isn't a vertex.
         let translate = |v: VertexId| if v <= start { v } else { v - 1 };
@@ -258,28 +260,28 @@ impl HeldKarp {
             let prev_vertex = tour.vertices[i-1];
             let vertex = tour.vertices[i];
             let s = i;
-            tour_set[i-1] = translate(vertex);
             let cost = graph.cost(graph.tick_offset(tour_tick), prev_vertex,
                                   vertex);
             info!("Target tour picked: {}->{} (cost {}+1)", prev_vertex+1,
                   vertex+1, cost);
             tour_tick += (cost as u16) + 1;
-            if s < graph.ports.len() {
+            tour_set[i-1] = translate(vertex);
+            if vertex != start {
                 info!("{}", self._show(&tour_set, s, i-1, start));
             }
 
             info!("Our tick: {}", our_tick);
             let our_prev_vertex = our_tour.vertices[i-1];
             let our_vertex = our_tour.vertices[i];
-            our_set[i-1] = translate(our_vertex);
             let our_cost = graph.cost(graph.tick_offset(our_tick),
                                       our_prev_vertex, our_vertex);
             info!("Our tour picked: {}->{} (cost {}+1)", our_prev_vertex+1,
                   our_vertex+1, our_cost);
-            if s < graph.ports.len() {
+            our_tick += (our_cost as u16) + 1;
+            our_set[i-1] = translate(our_vertex);
+            if our_vertex != start {
                 info!("{}", self._show(&our_set, s, i-1, start));
             }
-            our_tick += (our_cost as u16) + 1;
             info!("-----------------------");
         }
         panic!("Debug logs before here.");
@@ -288,6 +290,7 @@ impl HeldKarp {
     // Use for debugging
     fn _show(&self, set: &Set, s: usize, e_idx: usize, start: VertexId) -> String {
         let untranslate = |v: VertexId| if v < start { v } else { v + 1 };
+        info!("looking up idx={} with s={}", self.flat_index_region(set, s) + e_idx, s);
         let g = self.g[self.flat_index_region(set, s) + e_idx];
         let p = self.p[self.flat_index_region(set, s) + e_idx];
         format!("g({mask}, {e}) = {g}   p({mask}, {e}) = {p}",
