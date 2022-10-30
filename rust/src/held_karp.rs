@@ -10,6 +10,8 @@
 // the smallest distance.
 
 use log::info;
+use std::sync::{mpsc, Arc};
+use std::thread;
 
 use crate::challenge::{Solution, eval_score};
 use crate::challenge_consts::{MAX_PORTS, TICK_OFFSETS};
@@ -32,14 +34,35 @@ struct Tour {
     vertices: Vec<VertexId>,
 }
 
-pub fn held_karp(graph: &Graph) -> Option<Solution> {
-    let mut held_karp = HeldKarp::new();
-    let tour = (0..graph.ports.len())
-        .map(|v| v as VertexId)
-        .map(|start| held_karp.traveling_salesman(graph, start))
-        .min_by_key(|t| t.cost).unwrap();
-    tour.verify_tour(graph);
-    tour.to_solution(graph)
+pub fn held_karp(graph: &Arc<Graph>) -> Option<Solution> {
+    let graph = graph.clone();
+    let mut best_tour = Tour { cost: Cost::MAX, vertices: Vec::new() };
+    const NUM_THREADS: usize = 4;
+    let mut handles = vec![];
+    let (tx, rx) = mpsc::channel();
+    for i in 0..NUM_THREADS {
+        let tx = tx.clone();
+        let graph = graph.clone();
+        handles.push(thread::spawn(move || {
+            let mut held_karp = HeldKarp::new();
+            for start in (i..graph.ports.len()).step_by(NUM_THREADS) {
+                let tour = held_karp.traveling_salesman(&graph,
+                                                        start as VertexId);
+                tour.verify_tour(&graph);
+                tx.send(tour).unwrap();
+            }
+        }));
+    }
+    drop(tx);  // Drop the last sender, wait until all threads are done.
+    while let Ok(tour) = rx.recv() {
+        if tour.cost < best_tour.cost {
+            best_tour = tour;
+        }
+    }
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    best_tour.to_solution(&graph)
 }
 
 struct HeldKarp {

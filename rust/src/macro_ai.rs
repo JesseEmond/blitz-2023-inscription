@@ -1,6 +1,7 @@
 use log::{error, info, warn};
 use serde_json::{Value};
 use std::fs;
+use std::sync::Arc;
 use std::time::{Instant};
 
 use crate::ant_colony_optimization::{Colony, HyperParams};
@@ -51,7 +52,7 @@ impl Macro {
         }
 
         let graph_start = Instant::now();
-        let graph = Graph::new(&mut self.pathfinder, game_tick);
+        let graph = Arc::new(Graph::new(&mut self.pathfinder, game_tick));
         info!("Graph was built in {:?}", graph_start.elapsed());
 
         let greedy_start = Instant::now();
@@ -80,7 +81,7 @@ impl Macro {
             }
         };
         info!("[MACRO] Hyperparams: {hyperparams:?}");
-        let mut colony = Colony::new(graph.clone(), hyperparams, /*seed=*/42);
+        let mut colony = Colony::new(&graph, hyperparams, /*seed=*/42);
         let colony_start = Instant::now();
         let colony_sln = colony.run();
         info!("Colony solution was found in {:?}", colony_start.elapsed());
@@ -112,8 +113,6 @@ impl Macro {
                   goal = path.goal, cost = path.cost);
         }
         info!("Macro took {:?}", macro_start.elapsed());
-
-        panic!("Fast enough?");
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {

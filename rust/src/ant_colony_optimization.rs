@@ -4,6 +4,7 @@ use log::{debug};
 use serde::{Deserialize};
 use std::cmp::Ordering;
 use std::iter;
+use std::sync::Arc;
 use rand::{Rng, SeedableRng};
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::rngs::SmallRng;
@@ -94,7 +95,7 @@ pub struct VertexTrails {
 
 pub struct Colony {
     pub hyperparams: HyperParams,
-    pub graph: Graph,
+    pub graph: Arc<Graph>,
     // Trails for each vertex.
     pub trails: Vec<VertexTrails>,
     pub global_best: Option<Ant>,
@@ -297,12 +298,12 @@ impl VertexTrails {
 }
 
 impl Colony {
-    pub fn new(graph: Graph, hyperparams: HyperParams, seed: u64) -> Self {
+    pub fn new(graph: &Arc<Graph>, hyperparams: HyperParams, seed: u64) -> Self {
         let vertex_trails = (0..graph.ports.len()).map(|vertex_id| {
             VertexTrails::new(vertex_id as VertexId, &graph, &hyperparams)
         }).collect();
         Colony {
-            graph,
+            graph: graph.clone(),
             trails: vertex_trails,
             global_best: None,
             hyperparams,
