@@ -1,19 +1,14 @@
 use log::{error, info, warn};
-use serde_json::{Value};
-use std::fs;
 use std::sync::Arc;
 use std::time::{Instant};
 
-use crate::ant_colony_optimization::{Colony, HyperParams};
 use crate::challenge::{Solution, eval_score};
 use crate::game_interface::{GameTick};
 use crate::graph::{Graph, VertexId};
 use crate::held_karp::{held_karp};
 use crate::micro_ai::{Micro, State};
-use crate::pathfinding::{Pathfinder};
 
 pub struct Macro {
-    pathfinder: Pathfinder,
     solution: Option<Solution>,
     solution_idx: usize,
     pub give_up: bool,
@@ -28,17 +23,14 @@ impl Default for Macro {
 impl Macro {
     pub fn new() -> Self {
         Macro {
-            pathfinder: Pathfinder::new(),
             solution: None,
             solution_idx: 0,
             give_up: false,
         }
     }
 
-    pub fn init(&mut self, game_tick: &GameTick) {
+    pub fn init(&mut self, game_tick: Arc<GameTick>) {
         let macro_start = Instant::now();
-        let schedule: Vec<u8> = game_tick.tide_schedule.iter().map(|&e| e as u8).collect();
-        self.pathfinder.grid.init(&game_tick.map, &schedule);
 
         // This is a bit verbose, but we always want this on server.
         info!("--- TICK DUMP BEGIN ---");
@@ -52,7 +44,7 @@ impl Macro {
         }
 
         let graph_start = Instant::now();
-        let graph = Arc::new(Graph::new(&mut self.pathfinder, game_tick));
+        let graph: Arc<Graph> = Arc::new(Graph::new(&game_tick));
         info!("Graph was built in {:?}", graph_start.elapsed());
 
         let greedy_start = Instant::now();
@@ -63,32 +55,33 @@ impl Macro {
         info!("Greedy bot summary");
         summarize_solution(&greedy_sln, &graph);
 
-        let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
-            info!("[MACRO] Loading hyperparams from hyperparams.json.");
-            let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
-            serde_json::from_value(parsed).expect("invalid hyperparams")
-        } else {
-            info!("[MACRO] Using default params.");
-            // Point(hyperparams=Hyperparams(iterations=464, ants=63, evaporation_rate=0.7800131108465345, exploitation_probability=0.3642226425600267, heuristic_power=2.5583485993720037, base_pheromones=2.0097671658359686, local_evaporation_rate=0.7523178610770483), score=3078.174695652174)
-            HyperParams {
-                iterations: 464,
-                ants: 63,
-                evaporation_rate: 0.7800131108465345,
-                exploitation_probability: 0.3642226425600267,
-                heuristic_power: 2.5583485993720037,
-                base_pheromones: 2.0097671658359686,
-                local_evaporation_rate: 0.7523178610770483
-            }
-        };
-        info!("[MACRO] Hyperparams: {hyperparams:?}");
-        let mut colony = Colony::new(&graph, hyperparams, /*seed=*/42);
-        let colony_start = Instant::now();
-        let colony_sln = colony.run();
-        info!("Colony solution was found in {:?}", colony_start.elapsed());
-        info!("[MACRO] Solution found has a score of {}, with {} ports",
-              colony_sln.score, colony_sln.paths.len());
-        info!("Colony solution summary:");
-        summarize_solution(&colony_sln, &graph);
+        // To use an Ant Colony Optimization, use the following:
+        // let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
+        //     info!("[MACRO] Loading hyperparams from hyperparams.json.");
+        //     let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
+        //     serde_json::from_value(parsed).expect("invalid hyperparams")
+        // } else {
+        //     info!("[MACRO] Using default params.");
+        //     // Point(hyperparams=Hyperparams(iterations=464, ants=63, evaporation_rate=0.7800131108465345, exploitation_probability=0.3642226425600267, heuristic_power=2.5583485993720037, base_pheromones=2.0097671658359686, local_evaporation_rate=0.7523178610770483), score=3078.174695652174)
+        //     HyperParams {
+        //         iterations: 464,
+        //         ants: 63,
+        //         evaporation_rate: 0.7800131108465345,
+        //         exploitation_probability: 0.3642226425600267,
+        //         heuristic_power: 2.5583485993720037,
+        //         base_pheromones: 2.0097671658359686,
+        //         local_evaporation_rate: 0.7523178610770483
+        //     }
+        // };
+        // info!("[MACRO] Hyperparams: {hyperparams:?}");
+        // let mut colony = Colony::new(&graph, hyperparams, /*seed=*/42);
+        // let colony_start = Instant::now();
+        // let colony_sln = colony.run();
+        // info!("Colony solution was found in {:?}", colony_start.elapsed());
+        // info!("[MACRO] Solution found has a score of {}, with {} ports",
+        //       colony_sln.score, colony_sln.paths.len());
+        // info!("Colony solution summary:");
+        // summarize_solution(&colony_sln, &graph);
 
         let exact_tsp_start = Instant::now();
         let tsp_sln = held_karp(&graph).expect("No full TSP possible on this map");
@@ -99,16 +92,16 @@ impl Macro {
 
         self.solution_idx = 0;
 
-        self.solution = Some(colony_sln);
-        // NOTE: Using warnings here so that this shows up in evals where we
-        // turn off info logs... This is a bit needlessly hacky.
-        if greedy_sln.score > self.solution.as_ref().unwrap().score {
-            warn!("A greedy solution is better {} > {}, using it.",
-                  greedy_sln.score, self.solution.as_ref().unwrap().score);
-            self.solution = Some(greedy_sln);
-        }
+        // If using an Ant Colony Optimization solver:
+        // self.solution = Some(colony_sln);
+        // if greedy_sln.score > self.solution.as_ref().unwrap().score {
+        //     warn!("A greedy solution is better {} > {}, using it.",
+        //           greedy_sln.score, self.solution.as_ref().unwrap().score);
+        //     self.solution = Some(greedy_sln);
+        // }
+        self.solution = Some(greedy_sln);
         if tsp_sln.score > self.solution.as_ref().unwrap().score {
-            warn!("A TSP solution is better (duh!) {} > {}, using it.",
+            info!("A TSP solution is better (duh!) {} > {}, using it.",
                   tsp_sln.score, self.solution.as_ref().unwrap().score);
             self.solution = Some(tsp_sln);
         } else if tsp_sln.score < self.solution.as_ref().unwrap().score {

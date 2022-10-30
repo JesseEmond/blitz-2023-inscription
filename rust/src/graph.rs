@@ -1,8 +1,10 @@
 use arrayvec::ArrayVec;
 use log::{debug, info};
 use std::collections::{HashSet};
+use std::sync::{mpsc, Arc};
+use std::thread;
 
-use crate::challenge_consts::{MAX_PORTS, TICK_OFFSETS};
+use crate::challenge_consts::{MAX_PORTS, NUM_THREADS, TICK_OFFSETS};
 use crate::game_interface::{GameTick};
 use crate::pathfinding::{Path, Pathfinder, Pos};
 
@@ -24,7 +26,7 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn new(pathfinder: &mut Pathfinder, game_tick: &GameTick) -> Self {
+    pub fn new(game_tick: &Arc<GameTick>) -> Self {
         let tick = game_tick.current_tick as u16;
         let tick_offsets = game_tick.tide_schedule.len();
         assert!(tick_offsets == TICK_OFFSETS,
@@ -42,12 +44,30 @@ impl Graph {
         let mut paths: Paths = vec![vec![
             vec![placeholder_path; all_ports.len()];
             all_ports.len()]; tick_offsets];
-        for (source_idx, port) in all_ports.iter().enumerate() {
-            let mut targets = HashSet::from_iter(all_ports.iter().cloned());
-            targets.remove(port);
-            debug!("Pathfinding from port {port:?}");
-            let all_offsets_paths = pathfinder.paths_to_all_targets_by_offset(
-                port, &targets, tick);
+        let mut handles = vec![];
+        let (tx, rx) = mpsc::channel();
+        for i in 0..NUM_THREADS {
+            let tx = tx.clone();
+            let game_tick = game_tick.clone();
+            let all_ports = all_ports.clone();
+            handles.push(thread::spawn(move || {
+                let mut pathfinder = Pathfinder::new();
+                let schedule: Vec<u8> = game_tick.tide_schedule.iter()
+                    .map(|&e| e as u8).collect();
+                pathfinder.grid.init(&game_tick.map, &schedule);
+
+                for j in (i..all_ports.len()).step_by(NUM_THREADS) {
+                    let source_idx = j;
+                    let mut targets = HashSet::from_iter(all_ports.iter().cloned());
+                    targets.remove(&all_ports[source_idx]);
+                    let all_offsets_paths = pathfinder.paths_to_all_targets_by_offset(
+                        &all_ports[source_idx], &targets, tick);
+                    tx.send((source_idx, all_offsets_paths)).unwrap();
+                }
+            }));
+        }
+        drop(tx);  // Drop the last sender, wait until all threads are done.
+        while let Ok((source_idx, all_offsets_paths)) = rx.recv() {
             debug!(concat!("Computed {num_paths} groups of paths ({size} ",
                           "options each). Here they are:"),
                    num_paths = all_offsets_paths.len(),
@@ -70,6 +90,9 @@ impl Graph {
                 // For source_idx == target_idx (diagonal), leave the defaults
             }
         }
+        for handle in handles {
+            handle.join().unwrap();
+        } 
 
         info!("Graph created: {} vertices", all_ports.len());
         Graph {

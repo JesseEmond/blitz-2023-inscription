@@ -2,6 +2,7 @@ use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info};
 use serde_json::Error as JSONError;
 use serde_json::{json, Value};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio_tungstenite::tungstenite::Error as TungsteniteError;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -65,6 +66,7 @@ impl WebSocketGameClient {
                 }
 
                 let game_tick: GameTick = serde_json::from_value(parsed)?;
+                let game_tick = Arc::new(game_tick);
                 info!(
                     "Playing tick {} of {}",
                     game_tick.current_tick, game_tick.total_ticks
@@ -73,7 +75,7 @@ impl WebSocketGameClient {
                 // Copy current tick in order to send the command response
                 let current_tick = game_tick.current_tick;
                 // Fetch the next action from the bot
-                let action = self.bot.get_next_move(&game_tick)?;
+                let action = self.bot.get_next_move(game_tick.clone())?;
 
                 info!("Action of bot is: {:?}", action);
                 let response = json!({"type": "COMMAND", "tick": current_tick, "action": action});

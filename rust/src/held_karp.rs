@@ -14,7 +14,7 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 
 use crate::challenge::{Solution, eval_score};
-use crate::challenge_consts::{MAX_PORTS, TICK_OFFSETS};
+use crate::challenge_consts::{MAX_PORTS, NUM_THREADS, TICK_OFFSETS};
 use crate::graph::{Graph, VertexId};
 
 const MAX_MASK_ITEMS: usize = MAX_PORTS - 1;
@@ -35,9 +35,7 @@ struct Tour {
 }
 
 pub fn held_karp(graph: &Arc<Graph>) -> Option<Solution> {
-    let graph = graph.clone();
     let mut best_tour = Tour { cost: Cost::MAX, vertices: Vec::new() };
-    const NUM_THREADS: usize = 4;
     let mut handles = vec![];
     let (tx, rx) = mpsc::channel();
     for i in 0..NUM_THREADS {

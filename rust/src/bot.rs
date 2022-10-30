@@ -1,5 +1,4 @@
 // TODOs
-// - Multithreaded pathfinding
 // - Push to server, run in a loop
 // - implement "slow" pathfinding
 // - implement "slow" held-karp
@@ -10,6 +9,7 @@
 // - write-up
 use log::info;
 use std::time::{Instant};
+use std::sync::Arc;
 use thiserror::Error;
 
 use crate::game_interface::{Action, GameTick};
@@ -50,7 +50,7 @@ impl Bot {
     /// Make the next move according to current game tick
     ///
     /// This is where the magic happens, it's random but I bet you can do better ;)
-    pub fn get_next_move(&mut self, game_tick: &GameTick) -> Result<Action, Error> {
+    pub fn get_next_move(&mut self, game_tick: Arc<GameTick>) -> Result<Action, Error> {
         let start = Instant::now();
         info!("Tick {current}/{total}, pos: {pos:?}",
               current = game_tick.current_tick,
@@ -58,7 +58,7 @@ impl Bot {
               pos = game_tick.current_location);
 
         if game_tick.current_tick == 0 {
-            self.ai_macro.init(game_tick);
+            self.ai_macro.init(game_tick.clone());
         }
         if self.ai_macro.give_up {
             // Get a score of 0 by docking twice on the first port.
@@ -69,8 +69,8 @@ impl Bot {
             }
         }
 
-        self.ai_macro.assign_state(&mut self.ai_micro, game_tick);
-        let game_move = self.ai_micro.get_move(game_tick);
+        self.ai_macro.assign_state(&mut self.ai_micro, &game_tick);
+        let game_move = self.ai_micro.get_move(&game_tick);
         info!("Tick overall time: {:?}", start.elapsed());
         Ok(game_move)
     }
