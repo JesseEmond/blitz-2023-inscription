@@ -149,13 +149,12 @@ impl HeldKarp {
         while (set[0] as usize) < graph.ports.len() - 1 {
             let k = set[0];
             // Start at +1 to dock spawn.
-            let tick = start_tick + 1;
             // Initial cost is the start tick, plus cost from spawn to 'k'.
-            let cost = graph.cost(graph.tick_offset(tick), start,
+            let cost = graph.cost(graph.tick_offset(start_tick), start,
                                   untranslated[k as usize]);
-            // +1 to dock 'k'
             let idx = self.flat_index_region(&set, 1);
-            self.g[idx] = tick + (cost as Cost) + 1;
+            // +1 to dock 'k'
+            self.g[idx] = start_tick + (cost as Cost) + 1;
             self.p[idx] = k;
             next_set(&mut set, 1);
         }
@@ -240,18 +239,67 @@ impl HeldKarp {
         self.b[s] + s * loc
     }
 
-    // Use for debugging
-    fn _show(&self, set: &Set, s: usize, e_idx: usize) -> String {
-        let g = self.g[self.flat_index_region(set, s) + e_idx];
-        let p = self.p[self.flat_index_region(set, s) + e_idx];
-        format!("g({mask}, {e}) = {g}   p({mask}, {e}) = {p}",
-                mask = self._show_set(set, s),
-                e = set[e_idx] + 1, p = p + 1)
+    // Debugging function, used to investigate a (better) given tour
+    // step-by-step to iron out why a step wasn't taken.
+    fn _debug_tour(&mut self, tour: &Tour, graph: &Graph) {
+        let start = tour.vertices[0];
+        let our_tour = self.traveling_salesman(graph, start);
+
+        // Used for creating sets, in a space where 'start' isn't a vertex.
+        let translate = |v: VertexId| if v <= start { v } else { v - 1 };
+
+        // +1 to dock start
+        let mut our_tick = graph.start_tick + 1;
+        let mut our_set: Set = [VertexId::MAX; MAX_PORTS];
+        let mut tour_tick = graph.start_tick + 1;
+        let mut tour_set: Set = [VertexId::MAX; MAX_PORTS];
+        for i in 1..tour.vertices.len() {
+            info!("Target tour tick: {}", tour_tick);
+            let prev_vertex = tour.vertices[i-1];
+            let vertex = tour.vertices[i];
+            let s = i;
+            tour_set[i-1] = translate(vertex);
+            let cost = graph.cost(graph.tick_offset(tour_tick), prev_vertex,
+                                  vertex);
+            info!("Target tour picked: {}->{} (cost {}+1)", prev_vertex+1,
+                  vertex+1, cost);
+            tour_tick += (cost as u16) + 1;
+            if s < graph.ports.len() {
+                info!("{}", self._show(&tour_set, s, i-1, start));
+            }
+
+            info!("Our tick: {}", our_tick);
+            let our_prev_vertex = our_tour.vertices[i-1];
+            let our_vertex = our_tour.vertices[i];
+            our_set[i-1] = translate(our_vertex);
+            let our_cost = graph.cost(graph.tick_offset(our_tick),
+                                      our_prev_vertex, our_vertex);
+            info!("Our tour picked: {}->{} (cost {}+1)", our_prev_vertex+1,
+                  our_vertex+1, our_cost);
+            if s < graph.ports.len() {
+                info!("{}", self._show(&our_set, s, i-1, start));
+            }
+            our_tick += (our_cost as u16) + 1;
+            info!("-----------------------");
+        }
+        panic!("Debug logs before here.");
     }
 
     // Use for debugging
-    fn _show_set(&self, set: &Set, s: usize) -> String {
-        let set_vertices: Vec<_> = (0..s).map(|i| (set[i]+1).to_string()).collect();
+    fn _show(&self, set: &Set, s: usize, e_idx: usize, start: VertexId) -> String {
+        let untranslate = |v: VertexId| if v < start { v } else { v + 1 };
+        let g = self.g[self.flat_index_region(set, s) + e_idx];
+        let p = self.p[self.flat_index_region(set, s) + e_idx];
+        format!("g({mask}, {e}) = {g}   p({mask}, {e}) = {p}",
+                mask = self._show_set(set, s, start),
+                e = untranslate(set[e_idx]) + 1, p = untranslate(p) + 1)
+    }
+
+    // Use for debugging
+    fn _show_set(&self, set: &Set, s: usize, start: VertexId) -> String {
+        let untranslate = |v: VertexId| if v < start { v } else { v + 1 };
+        let set_vertices: Vec<_> = (0..s)
+            .map(|i| (untranslate(set[i])+1).to_string()).collect();
         format!("{{{}}}", set_vertices.join(","))
     }
 }
@@ -288,5 +336,19 @@ impl Tour {
         tick -= 1;
         assert!(tick == self.cost, "Tour would give cost {}, but we got {}",
                 tick, self.cost);
+    }
+
+    // This is used only for debugging when comparing to a solution from another
+    // approach.
+    fn _from_solution(graph: &Graph, solution: &Solution) -> Self {
+        let get_idx = |p| graph.ports.iter().position(|&v| v == p).unwrap();
+        let mut cost = graph.start_tick + 1;  // +1 to dock spawn
+        let mut vertices = vec![get_idx(solution.spawn) as VertexId];
+        for path in &solution.paths {
+            vertices.push(get_idx(path.goal) as VertexId);
+            cost += path.cost + 1;  // +1 to dock target
+        }
+        cost -= 1;  // The last dock back to spawn doesn't count
+        Tour { vertices, cost }
     }
 }

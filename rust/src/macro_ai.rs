@@ -99,7 +99,13 @@ impl Macro {
 
         self.solution = Some(colony_sln);
         self.solution_idx = 0;
-        // self.solution = Some(greedy_sln);
+        if greedy_sln.score > self.solution.as_ref().unwrap().score {
+            warn!("A greedy solution is better {} > {}, using it.",
+                  greedy_sln.score, self.solution.as_ref().unwrap().score);
+            self.solution = Some(greedy_sln);
+        }
+        assert!(tsp_sln.score >= self.solution.as_ref().unwrap().score,
+                "TSP worse??? Bug.");
         if tsp_sln.score > self.solution.as_ref().unwrap().score {
             warn!("A TSP solution is better (duh!) {} > {}, using it.",
                   tsp_sln.score, self.solution.as_ref().unwrap().score);
