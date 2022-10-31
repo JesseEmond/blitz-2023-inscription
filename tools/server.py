@@ -227,7 +227,7 @@ def start_game():
         json.dump(hyperparams.to_dict(), f)
   env = os.environ.copy()
   env['RUST_LOG'] = 'warn'
-  client_process = subprocess.Popen(['./rust/target/release/application'], env=env)
+  client_process = subprocess.Popen(['../target/release/application'], env=env)
 
 
 def new_suggestions():
@@ -242,8 +242,8 @@ def new_suggestions():
 async def run():
   global game_index
   if is_eval:
-    for path in glob.glob('games/*.json'):
-      game_id = int(re.match(r'games/(\d+).json', path).group(1))
+    for path in glob.glob('../games/*.json'):
+      game_id = int(re.match(r'../games/(\d+).json', path).group(1))
       with open(path, 'r') as f:
         tick = Tick.from_dict(json.load(f))
         if len(tick.map.ports) >= 20:
@@ -283,7 +283,7 @@ async def handler(websocket):
           arg = next(arg for arg in sys.argv if arg.startswith('--gameid='))
           _, game_id = arg.split('=')
           game_id = int(game_id)
-          with open(f'games/{game_id}.json', 'r') as f:
+          with open(f'../games/{game_id}.json', 'r') as f:
             game = Game(Tick.from_dict(json.load(f)), game_id)
         else:
           game = Game(seen_games.GAME1, -1)
