@@ -5,7 +5,7 @@ import requests
 import sys
 import time
 import zipfile
-from typing import Tuple
+from typing import Optional, Tuple
 
 from game_message import Map, Position, Tick, TideLevels
 
@@ -61,9 +61,13 @@ def extract_outer_object(line: str) -> Tuple[str, str]:
   return obj, content
 
 
-def extract_game(logs: str) -> Tick:
+def extract_game(logs: str) -> Optional[Tick]:
   lines = [line.strip() for line in logs.split('\n')]
-  start = next(i for i, line in enumerate(lines) if '--- TICK DUMP BEGIN ---' in line)
+  start = next(
+      (i for i, line in enumerate(lines) if '--- TICK DUMP BEGIN ---' in line),
+      None)
+  if start is None:
+    return None
   end = next(i for i, line in enumerate(lines) if '--- TICK DUMP END ---' in line)
   assert end - start == 2, (start, end)
   line = lines[start + 1]
@@ -138,6 +142,9 @@ while i < num_games:
   print('  downloading game logs...')
   logs = read_game_logs(game_id)
   game = extract_game(logs)
+  if not game:
+    print(f'[!ERROR!] Failed to real logs for game {game_id}. Skipping.')
+    continue
   print(f'  this was a {len(game.map.ports)} ports game')
   if len(game.map.ports) < 20:
     print('  skipping!')

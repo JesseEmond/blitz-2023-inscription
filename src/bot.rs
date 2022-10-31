@@ -6,6 +6,9 @@
 // - Greedy (nearest neighbor): 3360.9 avg, 3704 max
 //
 // TODOs
+// - check game status, loop with small (no?) sleep
+// - run game offline to get optimal score
+// - refactor to have 'bot' solvers, pick solver with cmdline arg
 // - implement "slow" pathfinding
 // - implement "slow" held-karp
 // - write-up outline
