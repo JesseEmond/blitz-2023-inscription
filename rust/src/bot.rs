@@ -1,7 +1,11 @@
+// On a dev set with 123 games:
+// - Optimal:                   3479.1 avg, 3722 max
+// - Held-Karp max_starts=5:    3471.8 avg, 3722 max
+// - Ant Colony Optimization:   3470.2 avg, 3722 max
+// - Held-Karp max_starts=4:    3469.8 avg, 3722 max
+// - Greedy (nearest neighbor): 3360.9 avg, 3704 max
+//
 // TODOs
-// - Try single Held-Karp run with graph that has averages for edge costs
-// - Lowerbounds...? skip paths that have >= 'inefficiencies' from first run?
-// - Push to server, run in a loop
 // - implement "slow" pathfinding
 // - implement "slow" held-karp
 // - write-up outline
