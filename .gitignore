@@ -13,6 +13,3 @@ perf.data.old
 flame.svg
 flamegraph.svg
 callgrind.*
-
-# When sweeping
-hyperparams.json

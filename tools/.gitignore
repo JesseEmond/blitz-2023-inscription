@@ -1,2 +1,5 @@
 access_token.priv
 __pycache__/
+
+# When sweeping
+hyperparams.json

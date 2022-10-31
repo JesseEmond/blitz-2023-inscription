@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# NOTE: the code here is fairly hacky and grew "organically" as needs arose.
+
 import asyncio
 import hyperparams
 import glob
