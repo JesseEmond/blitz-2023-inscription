@@ -1,7 +1,18 @@
-venv/
-__pycache__
-.vscode
+debug/
+target/
+
+Cargo.lock
+
+**/*.rs.bk
+
 devnull.zip
-access_token.priv
-games/
+
+# From profiling
+perf.data
+perf.data.old
+flame.svg
+flamegraph.svg
+callgrind.*
+
+# When sweeping
 hyperparams.json
