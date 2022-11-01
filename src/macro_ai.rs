@@ -2,11 +2,12 @@ use log::{error, info, warn};
 use std::sync::Arc;
 use std::time::{Instant};
 
-use crate::challenge::{Solution, eval_score};
+use crate::challenge::{Solution};
 use crate::game_interface::{GameTick};
-use crate::graph::{Graph, VertexId};
+use crate::graph::{Graph};
 use crate::held_karp::{held_karp};
 use crate::micro_ai::{Micro, State};
+use crate::solvers::{NearestNeighborSolver, Solver};
 
 // If using ACO:
 use crate::ant_colony_optimization::{Colony, HyperParams};
@@ -52,11 +53,8 @@ impl Macro {
         let graph: Arc<Graph> = Arc::new(Graph::new(&game_tick));
         info!("Graph was built in {:?}", graph_start.elapsed());
 
-        let greedy_start = Instant::now();
-        let greedy_sln = greedy_bot(&graph);
-        info!("A greedy bot would get us a score of {}, with {} ports",
-              greedy_sln.score, greedy_sln.paths.len());
-        info!("Greedy solution found in {:?}", greedy_start.elapsed());
+        let greedy_sln = NearestNeighborSolver::new().solve(&graph)
+            .expect("Greedy nearest neighbor did not find a solution.");
         info!("Greedy bot summary");
         summarize_solution(&greedy_sln, &graph);
 
@@ -160,75 +158,6 @@ impl Macro {
         }
         // else, no-op, micro is no a task.
     }
-}
-
-pub fn greedy_bot(graph: &Graph) -> Solution {
-    let mut best_sln: Option<Solution> = None;
-    for start_vertex_id in 0..graph.ports.len() {
-        let start_vertex_id = start_vertex_id as VertexId;
-        let mut seen = 1u64 << start_vertex_id;
-        let mut tick = graph.start_tick + 1;  // time to dock spawn
-        let mut current_id = start_vertex_id;
-        let mut paths = Vec::new();
-
-        loop {
-            let tick_offset = graph.tick_offset(tick);
-            let options = graph.others(current_id).filter(|&other_id| {
-                let mask = 1u64 << other_id;
-                let unseen = seen & mask == 0;
-                let cost = graph.cost(tick_offset, current_id, other_id) as u16;
-                let have_time = tick + cost + 1 < graph.max_ticks;
-                unseen && have_time
-            });
-            let closest = match options.min_by_key(
-                |&option_id| graph.cost(tick_offset, current_id, option_id)) {
-                Some(option_id) => option_id,
-                None => break,
-            };
-            paths.push((tick_offset, current_id, closest));
-            tick += (graph.cost(tick_offset, current_id, closest) + 1) as u16;
-            current_id = closest;
-            seen |= 1u64 << current_id;
-            let visits = seen.count_ones();
-            // First compute score if we stay here until the end of the game
-            let score = eval_score(visits, graph.max_ticks, /*looped=*/false);
-            let best_score = match &best_sln {
-                Some(sln) => sln.score,
-                None => score - 1,
-            };
-            if score > best_score {
-                best_sln = Some(Solution {
-                    score,
-                    spawn: graph.ports[start_vertex_id as usize],
-                    paths: paths.iter().map(
-                        |&(tick_offset, from, to)| graph.path(tick_offset, from, to).clone())
-                        .collect(),
-                });
-            }
-
-            // Consider going home from there, if we have time.
-            let tick_offset = graph.tick_offset(tick);
-            let home_cost = graph.cost(tick_offset, current_id, start_vertex_id) as u16;
-            if tick + home_cost < graph.max_ticks {
-                let home_score = eval_score(visits + 1,
-                                            tick + home_cost,
-                                            /*looped=*/true);
-                if home_score > best_score {
-                    let mut paths = paths.clone();
-                    paths.push((tick_offset, current_id, start_vertex_id));
-                    best_sln = Some(Solution {
-                        score: home_score,
-                        spawn: graph.ports[start_vertex_id as usize],
-                        paths: paths.iter().map(
-                            |&(tick_offset, from, to)| graph.path(tick_offset, from, to).clone())
-                            .collect(),
-                    });
-                }
-            }
-        }
-    }
-    let best_sln = best_sln.unwrap();
-    best_sln
 }
 
 fn summarize_solution(solution: &Solution, graph: &Graph) {

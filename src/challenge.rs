@@ -8,6 +8,7 @@ pub fn eval_score(visits: u32, ticks: u16, looped: bool) -> i32 {
     base * bonus
 }
 
+#[derive(Clone)]
 pub struct Solution {
     pub score: i32,
     pub spawn: Pos,
