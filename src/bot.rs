@@ -6,9 +6,9 @@
 // - Greedy (nearest neighbor): 3360.9 avg, 3704 max
 //
 // TODOs
-// - check game status, loop with small (no?) sleep
-// - run game offline to get optimal score
+// - graphql API to get number of runs for each team
 // - refactor to have 'bot' solvers, pick solver with cmdline arg
+// - in collect_games, once game is done run game offline to get optimal score
 // - implement "slow" pathfinding
 // - implement "slow" held-karp
 // - write-up outline

@@ -5,7 +5,7 @@ import requests
 import sys
 import time
 import zipfile
-from typing import Optional, Tuple
+from typing import Mapping, Optional, Tuple
 
 from game_message import Map, Position, Tick, TideLevels
 
@@ -17,12 +17,11 @@ output_folder = sys.argv[2]
 with open('access_token.priv', 'r') as f:
   access_token = f.read().strip()
 
+MY_TEAM_ID = 58
 
-def start_game() -> int:
-  def make_req():
-    return requests.post(f'https://api.blitz.codes/practices/Inscription',
-                         data='{}', cookies={'access_token': access_token})
-  r = make_req()
+
+def attempt_request(make_req_fn):
+  r = make_req_fn()
   assert r.status_code != 401, "Update your access_token!"
   if r.status_code == 429:  # HTTP Too Many Requests
     print(f'Oops! We are being throttled: {r.headers}')
@@ -32,22 +31,76 @@ def start_game() -> int:
       retry = str(10 * 60)
     print(f'Waiting for {retry} seconds...')
     time.sleep(int(retry))
-    r = make_req()
-  is_ok = r.status_code // 100
-  if not is_ok:
+    r = make_req_fn()
+  if not r.ok:
     print(f'Oops. Unexpected error...? Waiting 10 mins and retrying.')
     time.sleep(10 * 60)
-    r = make_req()
-    is_ok = r.status_code // 100
-  assert is_ok, (r.status_code, r.headers, r.content, r)
+    r = make_req_fn()
+  assert r.ok, (r.status_code, r.headers, r.content, r)
+  return r
+
+
+
+def start_game() -> int:
+  def req():
+    return requests.post(f'https://api.blitz.codes/practices/Inscription',
+                         data='{}', cookies={'access_token': access_token})
+  r = attempt_request(req)
   data = json.loads(r.text)
   return data["id"]
 
 
+def get_active_task_states() -> Mapping[int, str]:
+  def req():
+    query = """
+    query getTasks($teamId: smallint) {
+      blitz_tasks(
+        where: {
+          _and: {
+            type: {_eq: "game"},
+            taskteams: {team_id: {_eq: $teamId}}
+          }
+        }
+        order_by: {id: desc}
+        limit: 10) {
+        id
+        state
+      }
+    }"""
+    data = {
+        'operationName': 'getTasks',
+        'query': query,
+        'variables': {'teamId': MY_TEAM_ID},
+    }
+    return requests.post('https://api.blitz.codes/graphql', json=data,
+                         cookies={'access_token': access_token})
+  r = attempt_request(req)
+  data = json.loads(r.text)
+  assert 'data' in data, data
+  return {task['id']: task['state'] for task in data['data']['blitz_tasks']}
+
+
+def wait_for_game(game_id: int):
+  SLEEP_TIME = 5
+  started = False
+  print(f'  waiting for game #{game_id} to start', end='', flush=True)
+  while game_id not in get_active_task_states():
+    print('.', end='', flush=True)
+    time.sleep(SLEEP_TIME)
+  print('  Started!')
+  print(f'  waiting for game #{game_id} to complete', end='', flush=True)
+  while get_active_task_states()[game_id] != 'completed':
+    print('.', end='', flush=True)
+    time.sleep(SLEEP_TIME)
+  print('  Completed!')
+
+
+
 def read_game_logs(game_id: int) -> str:
-  r = requests.get(f'https://api.blitz.codes/game/{game_id}/debug',
-                   cookies={'access_token': access_token})
-  assert r.status_code == 200, r
+  def req():
+    return requests.get(f'https://api.blitz.codes/game/{game_id}/debug',
+                        cookies={'access_token': access_token})
+  r = attempt_request(req)
   zip_buffer = io.BytesIO(r.content)
   with zipfile.ZipFile(zip_buffer, 'a', zipfile.ZIP_DEFLATED, False) as zip_file:
     return zip_file.read('game_logs.txt').decode('utf-8')
@@ -117,6 +170,8 @@ def extract_game(logs: str) -> Optional[Tick]:
 def is_interesting_log_line(line: str) -> bool:
   return ('Graph was built in' in line or
           'greedy bot would get us' in line or
+          'Solution found has a score' in line or
+          'Colony solution was found in' in line or
           'TSP bot (held-karp)' in line or
           'TSP solution (held-karp)' in line or
           'Macro took ' in line)
@@ -137,8 +192,7 @@ i = 0
 while i < num_games:
   print(f'Starting game #{i+1}...')
   game_id = start_game()
-  print(f'  waiting for game #{game_id}...')
-  time.sleep(9 * 60)
+  wait_for_game(game_id)
   print('  downloading game logs...')
   logs = read_game_logs(game_id)
   game = extract_game(logs)

@@ -26,7 +26,7 @@ TODO: screencap of a game visualization?
 
 ## Online Server Automation / Games Collection
 [`collect_games.py`](collect_games.py) automatically launches games on the
-Blitz server, waits some amount of time, downloads & parses the game logs, and
+Blitz server, waits for it to complete, downloads & parses the game logs, and
 saves them to the given destination.
 
 It's used both to retry games in a loop (for a chance to get a 20-ports game
