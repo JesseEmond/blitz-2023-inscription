@@ -5,7 +5,6 @@ use std::time::{Instant};
 use crate::challenge::{Solution};
 use crate::game_interface::{GameTick};
 use crate::graph::{Graph};
-use crate::held_karp::{held_karp};
 use crate::micro_ai::{Micro, State};
 use crate::solvers::{ExactTspSolver, NearestNeighborSolver, Solver};
 
@@ -85,9 +84,6 @@ impl Macro {
               colony_sln.score, colony_sln.paths.len());
         info!("Colony solution summary:");
         summarize_solution(&colony_sln, &graph);
-
-        // So that our processing fits in ~1s.
-        // let max_starts = 4;
 
         let tsp_sln = ExactTspSolver{}.solve(&graph)
             .expect("No exact TSP possible on this map");

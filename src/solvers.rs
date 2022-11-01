@@ -1,6 +1,13 @@
 // Different solver implementations to plan a macro sequence of paths to follow.
 
-// TODO: stats of each solver
+// On a dev set with 123 games:
+// Solver                                  | Average |  Max | <1s? |
+// -----------------------------------------------------------------
+// ExactTspSolver                          |  3479.1 | 3722 |   N  |
+// ExactTspSomeStartsSolver{max_starts: 5} |  3471.8 | 3722 |   N  |
+// AntColonyOptimizationSolver             |  3470.2 | 3722 |   Y  |
+// ExactTspSomeStartsSolver{max_starts: 4} |  3469.8 | 3722 |   Y  |
+// NearestNeighborSolver                   |  3360.9 | 3704 |   Y  |
 
 use log::{info, warn};
 use std::sync::Arc;
@@ -51,6 +58,15 @@ pub struct NearestNeighborSolver {
 // size |S| and pick the best observed score, but this is likely not worth it
 // for top leaderboard potential games.
 pub struct ExactTspSolver {
+}
+
+// Solver that solves the Traveling Salesman Problem on the graph using
+// Held-Karp for a max number of possible starting point, going to all ports.
+// On the server, this can run ~4 start options. This will sometimes miss
+// optimal starting points, see ExactTspSolver for that.
+pub struct ExactTspSomeStartsSolver {
+    // Max number of starts to try.
+    max_starts: usize
 }
 
 impl Solver for NearestNeighborSolver {
@@ -148,5 +164,15 @@ impl Solver for ExactTspSolver {
     fn do_solve(&mut self, graph: &Arc<Graph>) -> Option<Solution> {
         let max_starts = graph.ports.len();  // try all starts
         held_karp(&graph, max_starts)
+    }
+}
+
+impl Solver for ExactTspSomeStartsSolver {
+    fn name(&self) -> &str {
+        "exact-tsp-some-starts"
+    }
+
+    fn do_solve(&mut self, graph: &Arc<Graph>) -> Option<Solution> {
+        held_karp(&graph, self.max_starts)
     }
 }
