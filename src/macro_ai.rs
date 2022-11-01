@@ -91,6 +91,7 @@ impl Macro {
         // let tsp_start = Instant::now();
         // // So that our processing fits in ~1s.
         // let max_starts = 4;
+        // let max_starts = 99;  // For an exact solve
         // let tsp_sln = held_karp(&graph, max_starts).expect("No full TSP possible on this map");
         // info!("A TSP bot (held-karp) would get us a score of {}", tsp_sln.score);
         // info!("TSP solution (held-karp) found in {:?}", tsp_start.elapsed());

@@ -40,7 +40,6 @@ def attempt_request(make_req_fn):
   return r
 
 
-
 def start_game() -> int:
   def req():
     return requests.post(f'https://api.blitz.codes/practices/Inscription',
