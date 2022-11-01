@@ -7,7 +7,7 @@ use crate::game_interface::{GameTick};
 use crate::graph::{Graph};
 use crate::held_karp::{held_karp};
 use crate::micro_ai::{Micro, State};
-use crate::solvers::{NearestNeighborSolver, Solver};
+use crate::solvers::{ExactTspSolver, NearestNeighborSolver, Solver};
 
 // If using ACO:
 use crate::ant_colony_optimization::{Colony, HyperParams};
@@ -86,15 +86,13 @@ impl Macro {
         info!("Colony solution summary:");
         summarize_solution(&colony_sln, &graph);
 
-        // let tsp_start = Instant::now();
-        // // So that our processing fits in ~1s.
+        // So that our processing fits in ~1s.
         // let max_starts = 4;
-        // let max_starts = 99;  // For an exact solve
-        // let tsp_sln = held_karp(&graph, max_starts).expect("No full TSP possible on this map");
-        // info!("A TSP bot (held-karp) would get us a score of {}", tsp_sln.score);
-        // info!("TSP solution (held-karp) found in {:?}", tsp_start.elapsed());
-        // info!("Here is the TSP solution:");
-        // summarize_solution(&tsp_sln, &graph);
+
+        let tsp_sln = ExactTspSolver{}.solve(&graph)
+            .expect("No exact TSP possible on this map");
+        info!("Here is the TSP solution:");
+        summarize_solution(&tsp_sln, &graph);
 
         self.solution_idx = 0;
 
@@ -106,16 +104,15 @@ impl Macro {
         //     self.solution = Some(greedy_sln);
         // }
         // self.solution = Some(greedy_sln);
-        // if tsp_sln.score > self.solution.as_ref().unwrap().score {
-        //     info!("A TSP solution is better (duh!) {} > {}, using it.",
-        //           tsp_sln.score, self.solution.as_ref().unwrap().score);
-        //     self.solution = Some(tsp_sln);
-        // } else if tsp_sln.score < self.solution.as_ref().unwrap().score {
-        //     assert!(max_starts < graph.ports.len() ||
-        //             tsp_sln.paths.len() > self.solution.as_ref().unwrap().paths.len(),
-        //             "Ran an exact TSP gives a worse solution for a full tour. That's a bug.");
-        //     warn!("TSP solution is worse, because a tour with <20 cities is better (or sub-optimal TSP settings).");
-        // }
+        if tsp_sln.score > self.solution.as_ref().unwrap().score {
+            info!("A TSP solution is better (duh!) {} > {}, using it.",
+                  tsp_sln.score, self.solution.as_ref().unwrap().score);
+            self.solution = Some(tsp_sln);
+        } else if tsp_sln.score < self.solution.as_ref().unwrap().score {
+            assert!(tsp_sln.paths.len() > self.solution.as_ref().unwrap().paths.len(),
+                    "Ran an exact TSP gives a worse solution for a full tour. That's a bug.");
+            warn!("TSP solution is worse, because a tour with <20 cities is better (or sub-optimal TSP settings).");
+        }
 
         info!("[MACRO] Our plan is the following: ");
         info!("[MACRO]   spawn on {spawn:?}", spawn = self.solution.as_ref().unwrap().spawn);

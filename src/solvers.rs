@@ -8,6 +8,7 @@ use std::time::{Instant};
 
 use crate::challenge::{Solution, eval_score};
 use crate::graph::{Graph, VertexId};
+use crate::held_karp::{held_karp};
 
 pub trait Solver {
     // Name to display for this solver.
@@ -38,6 +39,18 @@ pub trait Solver {
 // challenge logic baked in to consider shorter tours.
 pub struct NearestNeighborSolver {
     best_solution: Option<Solution>,
+}
+
+// Solver that solves the exact Traveling Salesman Problem on the graph using
+// Held-Karp for each possible starting point, going to all ports.
+// For games where the optimal score has all ports, this will find the optimal
+// possible score.
+// With 4 physical cores, this can fit under ~1s based on local tests, but this
+// is not the case on the server.
+// TODO: for a fully optimal solver, we could consider going home after each set
+// size |S| and pick the best observed score, but this is likely not worth it
+// for top leaderboard potential games.
+pub struct ExactTspSolver {
 }
 
 impl Solver for NearestNeighborSolver {
@@ -124,5 +137,16 @@ impl NearestNeighborSolver {
                 }
             }
         }
+    }
+}
+
+impl Solver for ExactTspSolver {
+    fn name(&self) -> &str {
+        "exact-tsp"
+    }
+
+    fn do_solve(&mut self, graph: &Arc<Graph>) -> Option<Solution> {
+        let max_starts = graph.ports.len();  // try all starts
+        held_karp(&graph, max_starts)
     }
 }
