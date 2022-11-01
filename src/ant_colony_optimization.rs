@@ -29,7 +29,7 @@ use crate::graph::{Graph, VertexId};
 // - Update both directions of edge?
 // - Update only trails for specific tick offset?
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct HyperParams {
     // Number of rounds of ant simulations to do.
     pub iterations: usize,

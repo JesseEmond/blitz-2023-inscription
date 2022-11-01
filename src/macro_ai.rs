@@ -6,10 +6,9 @@ use crate::challenge::{Solution};
 use crate::game_interface::{GameTick};
 use crate::graph::{Graph};
 use crate::micro_ai::{Micro, State};
-use crate::solvers::{ExactTspSolver, NearestNeighborSolver, Solver};
+use crate::solvers::{AntColonyOptimizationSolver, ExactTspSolver, NearestNeighborSolver, Solver};
 
-// If using ACO:
-use crate::ant_colony_optimization::{Colony, HyperParams};
+use crate::ant_colony_optimization::{HyperParams};
 use std::fs;
 use serde_json::Value;
 
@@ -57,7 +56,7 @@ impl Macro {
         info!("Greedy bot summary");
         summarize_solution(&greedy_sln, &graph);
 
-        // To use an Ant Colony Optimization, use the following:
+        // TODO: move this logic to bot creator, read from filename given as arg
         let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
             info!("[MACRO] Loading hyperparams from hyperparams.json.");
             let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
@@ -76,23 +75,19 @@ impl Macro {
             }
         };
         info!("[MACRO] Hyperparams: {hyperparams:?}");
-        let mut colony = Colony::new(&graph, hyperparams, /*seed=*/42);
-        let colony_start = Instant::now();
-        let colony_sln = colony.run();
-        info!("Colony solution was found in {:?}", colony_start.elapsed());
-        info!("[MACRO] Solution found has a score of {}, with {} ports",
-              colony_sln.score, colony_sln.paths.len());
+        let colony_sln = AntColonyOptimizationSolver::new(hyperparams,
+                                                          /*seed=*/42)
+            .do_solve(&graph).expect("No solution found via ACO");
         info!("Colony solution summary:");
         summarize_solution(&colony_sln, &graph);
 
-        let tsp_sln = ExactTspSolver{}.solve(&graph)
-            .expect("No exact TSP possible on this map");
-        info!("Here is the TSP solution:");
-        summarize_solution(&tsp_sln, &graph);
+        // let tsp_sln = ExactTspSolver{}.solve(&graph)
+        //     .expect("No exact TSP possible on this map");
+        // info!("Here is the TSP solution:");
+        // summarize_solution(&tsp_sln, &graph);
 
         self.solution_idx = 0;
 
-        // If using an Ant Colony Optimization solver:
         self.solution = Some(colony_sln);
         // if greedy_sln.score > self.solution.as_ref().unwrap().score {
         //     warn!("A greedy solution is better {} > {}, using it.",
@@ -100,15 +95,15 @@ impl Macro {
         //     self.solution = Some(greedy_sln);
         // }
         // self.solution = Some(greedy_sln);
-        if tsp_sln.score > self.solution.as_ref().unwrap().score {
-            info!("A TSP solution is better (duh!) {} > {}, using it.",
-                  tsp_sln.score, self.solution.as_ref().unwrap().score);
-            self.solution = Some(tsp_sln);
-        } else if tsp_sln.score < self.solution.as_ref().unwrap().score {
-            assert!(tsp_sln.paths.len() > self.solution.as_ref().unwrap().paths.len(),
-                    "Ran an exact TSP gives a worse solution for a full tour. That's a bug.");
-            warn!("TSP solution is worse, because a tour with <20 cities is better (or sub-optimal TSP settings).");
-        }
+        // if tsp_sln.score > self.solution.as_ref().unwrap().score {
+        //     info!("A TSP solution is better (duh!) {} > {}, using it.",
+        //           tsp_sln.score, self.solution.as_ref().unwrap().score);
+        //     self.solution = Some(tsp_sln);
+        // } else if tsp_sln.score < self.solution.as_ref().unwrap().score {
+        //     assert!(tsp_sln.paths.len() > self.solution.as_ref().unwrap().paths.len(),
+        //             "Ran an exact TSP gives a worse solution for a full tour. That's a bug.");
+        //     warn!("TSP solution is worse, because a tour with <20 cities is better (or sub-optimal TSP settings).");
+        // }
 
         info!("[MACRO] Our plan is the following: ");
         info!("[MACRO]   spawn on {spawn:?}", spawn = self.solution.as_ref().unwrap().spawn);

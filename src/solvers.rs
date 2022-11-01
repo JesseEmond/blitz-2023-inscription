@@ -13,6 +13,7 @@ use log::{info, warn};
 use std::sync::Arc;
 use std::time::{Instant};
 
+use crate::ant_colony_optimization::{Colony, HyperParams};
 use crate::challenge::{Solution, eval_score};
 use crate::graph::{Graph, VertexId};
 use crate::held_karp::{held_karp};
@@ -67,6 +68,14 @@ pub struct ExactTspSolver {
 pub struct ExactTspSomeStartsSolver {
     // Max number of starts to try.
     max_starts: usize
+}
+
+// Solve using Ant Colony Optimization to find a solution.
+// It runs iterations of sampling and simulating "ants" that leave pheromones on
+// good paths.
+pub struct AntColonyOptimizationSolver {
+    seed: u64,
+    hyperparams: HyperParams,
 }
 
 impl Solver for NearestNeighborSolver {
@@ -174,5 +183,22 @@ impl Solver for ExactTspSomeStartsSolver {
 
     fn do_solve(&mut self, graph: &Arc<Graph>) -> Option<Solution> {
         held_karp(&graph, self.max_starts)
+    }
+}
+
+impl AntColonyOptimizationSolver {
+    pub fn new(hyperparams: HyperParams, seed: u64) -> Self {
+        AntColonyOptimizationSolver { hyperparams, seed }
+    }
+}
+
+impl Solver for AntColonyOptimizationSolver {
+    fn name(&self) -> &str {
+        "ant-colony-optimization"
+    }
+
+    fn do_solve(&mut self, graph: &Arc<Graph>) -> Option<Solution> {
+        let mut colony = Colony::new(graph, self.hyperparams.clone(), self.seed);
+        Some(colony.run())
     }
 }
