@@ -62,6 +62,19 @@ range of the parameter. This is used to help pick sweep ranges.
 
 TODO: include sweep param example screenshot that suggested a narrower range
 
+## Leaderboard Analysis
+[`leaderboard.py`](leaderboard.py) interacts with the server's graphql API to
+inspect some available information on other teams.
+
+Given that this challenge involves considerable randomness (number of ports, map
+generation specifics), it can be hard to tell when we're behind due to a lack of
+games played (for a chance for a high potential game), or other issues.
+Comparing to other teams on the leaderboard is a helpful proxy.
+
+This shows information about the total number of games played per team.
+
+TODO: more stats
+
 ## Other Minor Utils
 - [`seen_games.py`](seen_games.py): contains a hard-coded `GameTick` from a
   server game, used by default on the local server.

@@ -1,5 +1,10 @@
 // TODOs
-// - refactor to have 'bot' solvers, pick solver with cmdline arg
+// - inspect leaderboard tool
+// - rust binary that checks unplayed games and reports best possible perf
+// - pass solver from bot creation
+// - determine solver from args cmdline
+// - ACO parse hyperparams based on arg
+// - eval mode where the solver runs a given game and outputs score and closes
 // - in collect_games, once game is done run game offline to get optimal score
 // - implement "slow" pathfinding
 // - implement "slow" held-karp

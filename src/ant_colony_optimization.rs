@@ -1,4 +1,3 @@
-// TODO: fix for adjacency matrix graph
 use arrayvec::ArrayVec;
 use log::{debug};
 use serde::{Deserialize};
