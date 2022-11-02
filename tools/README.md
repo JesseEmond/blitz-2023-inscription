@@ -71,10 +71,8 @@ generation specifics), it can be hard to tell when we're behind due to a lack of
 games played (for a chance for a high potential game), or other issues.
 Comparing to other teams on the leaderboard is a helpful proxy.
 
-This shows information about the total number of games played per team, next to
-their score.
-
-TODO: more stats
+This shows information about the total number of games played & score per team,
+along with some last N games stats for my team & the current top team.
 
 ## Other Minor Utils
 - [`seen_games.py`](seen_games.py): contains a hard-coded `GameTick` from a

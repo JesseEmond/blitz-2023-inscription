@@ -1,5 +1,4 @@
 // TODOs
-// - inspect leaderboard tool
 // - rust binary that checks unplayed games and reports best possible perf
 // - pass solver from bot creation
 // - determine solver from args cmdline
