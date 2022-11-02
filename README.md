@@ -28,4 +28,7 @@ TODO benchmark overview
   - `collect_games.py`: Launch games on the server and parse their logs to
     extract games and save them locally. Also used to play games in a loop for a
     chance for a better score;
+    - `live_evaler.rs`: Monitors a folder for new stored games, evaluates them
+    with a slow but powerful solver to estimate an upper bound of possible score
+    out of games seen so far.
   - `visualize_ants.py`: Plot visualizations of Ant Colony Optimization "ants".

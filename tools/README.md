@@ -41,6 +41,10 @@ Example usage: `python collect_games.py 10 ../games/`
 Note that it treats the number as the desired number of 20-ports games and it
 does not save <20 ports games.
 
+### Live Evaler
+
+TODO document, uniquely a rust binary
+
 ## Visualize Ants
 [`visualize_ants.py`](visualize_ants.py) parses debug logs from a run with Ant
 Colony Optimization to produce visualizations on how the algorithm behaves at
