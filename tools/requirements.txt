@@ -4,3 +4,4 @@ networkx
 matplotlib
 requests
 google-vizier
+tabulate

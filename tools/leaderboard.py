@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import requests
+import tabulate
 from typing import List, Mapping
 
 
@@ -53,7 +54,18 @@ def get_all_teams_task_counts() -> Mapping[int, int]:
 
 
 def get_all_teams_scores() -> Mapping[int, int]:
-  pass  # TODO
+  data = {
+      'query': '{ blitz_scores_aggregate(order_by: {team_id: asc, score: desc} distinct_on: team_id) { nodes { score, team { id } } } }'
+  }
+  r = requests.post('https://api.blitz.codes/graphql', json=data,
+                    cookies={'access_token': access_token})
+  assert r.status_code == 200, (r.status_code, r.headers, r.content, r)
+  data = json.loads(r.text)
+  assert 'data' in data, data
+  return {
+      score['team']['id']: score['score']
+      for score in data['data']['blitz_scores_aggregate']['nodes']
+  }
 
 
 def get_team_recent_games(team_id: int, num_games: int) -> List[Game]:
@@ -69,8 +81,12 @@ teams = get_teams()
 # the challenge. This can tell us if we have not played enough games, or if our
 # approach is off.
 task_counts = get_all_teams_task_counts()
-print("Team number of runs:")
-for team in sorted(teams, key=lambda t: task_counts.get(t.id, 0), reverse=True):
-  print(f'  {team.name}: {task_counts.get(team.id, 0)} runs')
+team_scores = get_all_teams_scores()
 
-# TODO get leaderboard scores, show recent games stats for top team & me
+table = []
+for team in sorted(teams, key=lambda t: team_scores.get(t.id, 0), reverse=True):
+  table.append([team.name, team_scores.get(team.id, 0), task_counts.get(team.id, 0)])
+print(tabulate.tabulate(table, headers=['Team Name', 'Score', '# Runs'],
+                        tablefmt='grid'))
+
+# TODO show recent games stats for top team & me
