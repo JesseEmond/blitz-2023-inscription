@@ -11,7 +11,9 @@ use std::sync::Arc;
 
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde_json::Error as JSONError;
 use serde_json::Value;
+use thiserror::Error;
 
 use blitz_bot::game_interface::{GameTick};
 use blitz_bot::graph::{Graph};
@@ -21,6 +23,14 @@ use blitz_bot::solvers::{ExactTspSolver, Solver};
 struct SavedGame {
     id: u32,
     path: String,
+}
+
+#[derive(Error, Debug)]
+enum GameEvalError {
+    #[error("Failed reading the saved game")]
+    ReadError(#[from] std::io::Error),
+    #[error("Failed parsing the saved game")]
+    ParseError(#[from] JSONError),
 }
 
 fn read_saved_games(directory: &str) -> Vec<SavedGame> {
@@ -40,15 +50,20 @@ fn read_saved_games(directory: &str) -> Vec<SavedGame> {
     out
 }
 
-fn evaluate_game(saved_game: &SavedGame) -> i32 {
-    let game_data = std::fs::read_to_string(&saved_game.path).unwrap();
-    let parsed: Value = serde_json::from_str(&game_data).expect("invalid json");
-    let tick: GameTick = serde_json::from_value(parsed).expect("invalid game tick");
+fn evaluate_game(saved_game: &SavedGame) -> Result<i32, GameEvalError> {
+    let game_data = std::fs::read_to_string(&saved_game.path)?;
+    let parsed: Value = serde_json::from_str(&game_data)?;
+    let tick: GameTick = serde_json::from_value(parsed)?;
     let tick = Arc::new(tick);
 
-    let graph: Arc<Graph> = Arc::new(Graph::new(&tick));
-    let solution = ExactTspSolver{}.solve(&graph);
-    solution.expect("no solution possible on game").score
+    if tick.map.ports.len() >= 20 {
+        let graph: Arc<Graph> = Arc::new(Graph::new(&tick));
+        let solution = ExactTspSolver{}.solve(&graph)
+            .expect("no solution possible on game");
+        Ok(solution.score)
+    } else {
+        Ok(0)
+    }
 }
 
 fn main() {
@@ -65,12 +80,22 @@ fn main() {
             for game in unseen_games {
                 println!("  evaluating game #{}...", game.id);
                 let score = evaluate_game(&game);
-                println!("  score: {} points", score);
-                scores.push(score);
-                seen_games.insert(game.id);
+                match score {
+                    Ok(score) => {
+                        if score > 0 {
+                            println!("  score: {} points", score);
+                            scores.push(score);
+                        } else {
+                            println!("  less than 20 ports. Ignoring.");
+                        }
+                        seen_games.insert(game.id);
+                    },
+                    Err(err) => println!("  error: {err:?} Will retry."),
+                };
             }
 
             println!("Score stats:");
+            println!("  #: {}", scores.len());
             println!("Min: {}", scores.iter().min().unwrap());
             println!("Max: {}", scores.iter().max().unwrap());
             let mut score_sum: i64 = 0;

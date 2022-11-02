@@ -58,8 +58,7 @@ pub struct NearestNeighborSolver {
 // TODO: for a fully optimal solver, we could consider going home after each set
 // size |S| and pick the best observed score, but this is likely not worth it
 // for top leaderboard potential games.
-pub struct ExactTspSolver {
-}
+pub struct ExactTspSolver;
 
 // Solver that solves the Traveling Salesman Problem on the graph using
 // Held-Karp for a max number of possible starting point, going to all ports.
