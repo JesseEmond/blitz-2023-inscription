@@ -1,3 +1,4 @@
+// State machine that produces bot actions to achieve micro-management goals.
 use log::{debug};
 
 use crate::pathfinding::{Path, Pos};
@@ -46,7 +47,6 @@ fn state_short(state: &State) -> String {
     }
 }
 
-// Micro-management of our boat.
 pub struct Micro {
     pub state: State,
 }

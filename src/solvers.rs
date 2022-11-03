@@ -191,6 +191,30 @@ impl AntColonyOptimizationSolver {
     }
 }
 
+impl Default for AntColonyOptimizationSolver {
+    fn default() -> Self {
+        // From sweep:
+        // Point(
+        //  hyperparams=Hyperparams(iterations=464, ants=63,
+        //                          evaporation_rate=0.7800131108465345,
+        //                          exploitation_probability=0.3642226425600267,
+        //                          heuristic_power=2.5583485993720037,
+        //                          base_pheromones=2.0097671658359686,
+        //                          local_evaporation_rate=0.7523178610770483),
+        //  score=3078.174695652174)
+        let hyperparams = HyperParams {
+            iterations: 464,
+            ants: 63,
+            evaporation_rate: 0.7800131108465345,
+            exploitation_probability: 0.3642226425600267,
+            heuristic_power: 2.5583485993720037,
+            base_pheromones: 2.0097671658359686,
+            local_evaporation_rate: 0.7523178610770483
+        };
+        AntColonyOptimizationSolver::new(hyperparams, /*seed=*/42)
+    }
+}
+
 impl Solver for AntColonyOptimizationSolver {
     fn name(&self) -> &str {
         "ant-colony-optimization"

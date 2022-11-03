@@ -168,12 +168,9 @@ def extract_game(logs: str) -> Optional[Tick]:
 
 def is_interesting_log_line(line: str) -> bool:
   return ('Graph was built in' in line or
-          'greedy bot would get us' in line or
-          'Solution found has a score' in line or
-          'Colony solution was found in' in line or
-          'TSP bot (held-karp)' in line or
-          'TSP solution (held-karp)' in line or
-          'Macro took ' in line)
+          ('Solver' in line and 'would get us a score of' in line) or
+          ('Solver' in line and 'took' in line) or
+          'Planning took ' in line)
 
 
 def extract_interesting_lines(logs: str) -> str:

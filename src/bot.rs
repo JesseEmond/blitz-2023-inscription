@@ -1,10 +1,8 @@
 // TODOs
-// - rust binary that checks unplayed games and reports best possible perf
 // - pass solver from bot creation
 // - determine solver from args cmdline
-// - ACO parse hyperparams based on arg
-// - eval mode where the solver runs a given game and outputs score and closes
-// - in collect_games, once game is done run game offline to get optimal score
+// - ACO parse hyperparams based on arg, sweep using that (in /tmp/)
+// - improve/sweep ACO on game #10589, to get closer to 3836
 // - implement "slow" pathfinding
 // - implement "slow" held-karp
 // - write-up outline
@@ -18,8 +16,10 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::game_interface::{Action, GameTick};
+use crate::graph::{Graph};
 use crate::micro_ai::{Micro, State};
 use crate::macro_ai::{Macro};
+use crate::solvers::{Solver};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -31,15 +31,7 @@ pub enum Error {
 pub struct Bot {
     ai_micro: Micro,
     ai_macro: Macro,
-}
-
-impl Default for Bot {
-    fn default() -> Self {
-        Bot {
-            ai_micro: Micro { state: State::Waiting },
-            ai_macro: Macro::new(),
-        }
-    }
+    solver: Box<dyn Solver>,
 }
 
 impl Bot {
@@ -47,9 +39,31 @@ impl Bot {
     ///
     /// This method should be used to initialize some
     /// variables you will need throughout the challenge.
-    pub fn new() -> Self {
+    pub fn new(solver: Box<dyn Solver>) -> Self {
         info!("Initializing bot");
-        Bot::default()
+        Bot {
+            ai_micro: Micro { state: State::Waiting },
+            ai_macro: Macro::new(),
+            solver,
+        }
+    }
+
+    fn init(&mut self, game_tick: Arc<GameTick>) {
+        let planning_start = Instant::now();
+
+        // This is a bit verbose, but we always want this on server.
+        info!("--- TICK DUMP BEGIN ---");
+        info!("{game_tick:?}");
+        info!("--- TICK DUMP END ---");
+
+        let graph_start = Instant::now();
+        let graph: Arc<Graph> = Arc::new(Graph::new(&game_tick));
+        info!("Graph was built in {:?}", graph_start.elapsed());
+
+        let solution = self.solver.solve(&graph).expect("no solution found");
+        self.ai_macro.init(&graph, solution);
+
+        info!("Planning took {:?}", planning_start.elapsed());
     }
 
     /// Make the next move according to current game tick
@@ -63,7 +77,7 @@ impl Bot {
               pos = game_tick.current_location);
 
         if game_tick.current_tick == 0 {
-            self.ai_macro.init(game_tick.clone());
+            self.init(game_tick.clone());
         }
         if self.ai_macro.give_up {
             // Get a score of 0 by docking twice on the first port.

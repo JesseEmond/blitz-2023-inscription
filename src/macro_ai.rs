@@ -1,16 +1,10 @@
-use log::{error, info, warn};
-use std::sync::Arc;
-use std::time::{Instant};
+// Executes a given solution by mutating Micro states at a macro level.
+use log::{error, info};
 
 use crate::challenge::{Solution};
 use crate::game_interface::{GameTick};
 use crate::graph::{Graph};
 use crate::micro_ai::{Micro, State};
-use crate::solvers::{AntColonyOptimizationSolver, ExactTspSolver, NearestNeighborSolver, Solver};
-
-use crate::ant_colony_optimization::{HyperParams};
-use std::fs;
-use serde_json::Value;
 
 pub struct Macro {
     solution: Option<Solution>,
@@ -33,85 +27,24 @@ impl Macro {
         }
     }
 
-    pub fn init(&mut self, game_tick: Arc<GameTick>) {
-        let macro_start = Instant::now();
-
-        // This is a bit verbose, but we always want this on server.
-        info!("--- TICK DUMP BEGIN ---");
-        info!("{game_tick:?}");
-        info!("--- TICK DUMP END ---");
-
-        if game_tick.map.ports.len() < 20 {
-            error!("Only {} ports!? Why would I bother!", game_tick.map.ports.len());
+    pub fn init(&mut self, graph: &Graph, solution: Solution) {
+        if graph.ports.len() < 20 {
+            error!("Only {} ports!? Why would I bother!", graph.ports.len());
             self.give_up = true;
             return;
         }
 
-        let graph_start = Instant::now();
-        let graph: Arc<Graph> = Arc::new(Graph::new(&game_tick));
-        info!("Graph was built in {:?}", graph_start.elapsed());
-
-        let greedy_sln = NearestNeighborSolver::new().solve(&graph)
-            .expect("Greedy nearest neighbor did not find a solution.");
-        info!("Greedy bot summary");
-        summarize_solution(&greedy_sln, &graph);
-
-        // TODO: move this logic to bot creator, read from filename given as arg
-        let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
-            info!("[MACRO] Loading hyperparams from hyperparams.json.");
-            let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
-            serde_json::from_value(parsed).expect("invalid hyperparams")
-        } else {
-            info!("[MACRO] Using default params.");
-            // Point(hyperparams=Hyperparams(iterations=464, ants=63, evaporation_rate=0.7800131108465345, exploitation_probability=0.3642226425600267, heuristic_power=2.5583485993720037, base_pheromones=2.0097671658359686, local_evaporation_rate=0.7523178610770483), score=3078.174695652174)
-            HyperParams {
-                iterations: 464,
-                ants: 63,
-                evaporation_rate: 0.7800131108465345,
-                exploitation_probability: 0.3642226425600267,
-                heuristic_power: 2.5583485993720037,
-                base_pheromones: 2.0097671658359686,
-                local_evaporation_rate: 0.7523178610770483
-            }
-        };
-        info!("[MACRO] Hyperparams: {hyperparams:?}");
-        let colony_sln = AntColonyOptimizationSolver::new(hyperparams,
-                                                          /*seed=*/42)
-            .do_solve(&graph).expect("No solution found via ACO");
-        info!("Colony solution summary:");
-        summarize_solution(&colony_sln, &graph);
-
-        // let tsp_sln = ExactTspSolver{}.solve(&graph)
-        //     .expect("No exact TSP possible on this map");
-        // info!("Here is the TSP solution:");
-        // summarize_solution(&tsp_sln, &graph);
-
-        self.solution_idx = 0;
-
-        self.solution = Some(colony_sln);
-        // if greedy_sln.score > self.solution.as_ref().unwrap().score {
-        //     warn!("A greedy solution is better {} > {}, using it.",
-        //           greedy_sln.score, self.solution.as_ref().unwrap().score);
-        //     self.solution = Some(greedy_sln);
-        // }
-        // self.solution = Some(greedy_sln);
-        // if tsp_sln.score > self.solution.as_ref().unwrap().score {
-        //     info!("A TSP solution is better (duh!) {} > {}, using it.",
-        //           tsp_sln.score, self.solution.as_ref().unwrap().score);
-        //     self.solution = Some(tsp_sln);
-        // } else if tsp_sln.score < self.solution.as_ref().unwrap().score {
-        //     assert!(tsp_sln.paths.len() > self.solution.as_ref().unwrap().paths.len(),
-        //             "Ran an exact TSP gives a worse solution for a full tour. That's a bug.");
-        //     warn!("TSP solution is worse, because a tour with <20 cities is better (or sub-optimal TSP settings).");
-        // }
+        summarize_solution(&solution, &graph);
 
         info!("[MACRO] Our plan is the following: ");
-        info!("[MACRO]   spawn on {spawn:?}", spawn = self.solution.as_ref().unwrap().spawn);
-        for path in &self.solution.as_ref().unwrap().paths {
+        info!("[MACRO]   spawn on {spawn:?}", spawn = solution.spawn);
+        for path in &solution.paths {
             info!("[MACRO]   go to {goal:?} in {cost:?} steps (+1 dock)",
                   goal = path.goal, cost = path.cost);
         }
-        info!("Macro took {:?}", macro_start.elapsed());
+
+        self.solution_idx = 0;
+        self.solution = Some(solution);
     }
 
     pub fn assign_state(&mut self, micro: &mut Micro, game_tick: &GameTick) {
