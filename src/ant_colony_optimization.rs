@@ -30,33 +30,36 @@ use crate::graph::{Graph, VertexId};
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct HyperParams {
-    // Number of rounds of ant simulations to do.
+    /// Number of rounds of ant simulations to do.
     pub iterations: usize,
 
-    // 'm' ants that construct solutions at each iteration
+    /// 'm' ants that construct solutions at each iteration
     pub ants: usize,
 
-    // 'ρ' (rho) used in pheromone (τ) updates, i.e.
-    // τ = (1 - ρ) τ + ρ total_fitness
+    /// 'ρ' (rho) used in pheromone (τ) updates, i.e.
+    /// τ = (1 - ρ) τ + ρ total_fitness
     pub evaporation_rate: f32,
 
-    // q0 used when choosing actions. With probability q0, the best move is
-    // exploited instead of sampling.
+    /// q0 used when choosing actions. With probability q0, the best move is
+    /// exploited instead of sampling.
     pub exploitation_probability: f32,
 
     // NOTE: we don't support 'α' (alpha) as pheromone trail exponent to speed
     // up computation. Instead, we rely on beta being swept (note: not
     // strictly equivalent).
 
-    // 'β' (beta) used when sampling actions, applied to the heuristic η: η^β
+    /// 'β' (beta) used when sampling actions, applied to the heuristic η: η^β
     pub heuristic_power: f32,
 
-    // 'τ0' base pheromones for local updates, in the following formula:
-    // τ = (1 − ξ) · τ + ξ τ0
+    /// 'τ0' base pheromones for local updates, in the following formula:
+    /// τ = (1 − ξ) · τ + ξ τ0
     pub base_pheromones: f32,
-    // 'ξ' evaporation rate for local updates, in the following formula:
-    // τ = (1 − ξ) · τ + ξ τ0
+    /// 'ξ' evaporation rate for local updates, in the following formula:
+    /// τ = (1 − ξ) · τ + ξ τ0
     pub local_evaporation_rate: f32,
+
+    /// Seed to use for randomness.
+    pub seed: u64,
 }
 
 #[derive(Clone)]
@@ -112,6 +115,7 @@ impl HyperParams {
             heuristic_power: 3.0,
             base_pheromones: 0.01,
             local_evaporation_rate: 0.01,
+            seed: 42,
         }
     }
 }
@@ -297,10 +301,11 @@ impl VertexTrails {
 }
 
 impl Colony {
-    pub fn new(graph: &Arc<Graph>, hyperparams: HyperParams, seed: u64) -> Self {
+    pub fn new(graph: &Arc<Graph>, hyperparams: HyperParams) -> Self {
         let vertex_trails = (0..graph.ports.len()).map(|vertex_id| {
             VertexTrails::new(vertex_id as VertexId, &graph, &hyperparams)
         }).collect();
+        let seed = hyperparams.seed;
         Colony {
             graph: graph.clone(),
             trails: vertex_trails,

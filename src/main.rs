@@ -1,6 +1,7 @@
 use clap::{Parser, ValueEnum};
 use env_logger::Env;
 use log::{error, info};
+use serde_json::Value;
 
 use blitz_bot::bot::Bot;
 use blitz_bot::client::WebSocketGameClient;
@@ -26,22 +27,34 @@ struct Cli {
           default_value_t = SolverName::AntColonyOptimization)]
     solver: SolverName,
 
-    /// When using exact_tsp_some_starts, maximum number of starts to try.
+    /// When using exact-tsp-some-starts, maximum number of starts to try.
     #[arg(long, default_value_t = 4)]
     exact_tsp_max_starts: usize,
+
+    /// When using ant-colony-optimization, hyperparams JSON file to use.
+    #[arg(long)]
+    aco_hyperparams_file: Option<String>,
 }
 
 fn new_solver(cli: Cli) -> Box<dyn Solver> {
     match cli.solver {
         SolverName::AntColonyOptimization => {
-            // TODO: support sweep hyperparams.json use-case.
-            // let hyperparams = if let Ok(hyperparam_data) = fs::read_to_string("hyperparams.json") {
-            //     info!("[MACRO] Loading hyperparams from hyperparams.json.");
-            //     let parsed: Value = serde_json::from_str(&hyperparam_data).expect("invalid json");
-            //     serde_json::from_value(parsed).expect("invalid hyperparams")
-            // }
-            info!("[ACO] Using default hyperparams.");
-            Box::new(AntColonyOptimizationSolver::default())
+            match &cli.aco_hyperparams_file {
+                Some(filename) => {
+                    let hyperparams_data = std::fs::read_to_string(filename)
+                        .expect("failed to read aco_hyperparams_file");
+                    info!("[ACO] Loading hyperparams from {filename}");
+                    let parsed: Value = serde_json::from_str(&hyperparams_data)
+                        .expect("invalid json");
+                    let hyperparams = serde_json::from_value(parsed)
+                        .expect("invalid hyperparams");
+                    Box::new(AntColonyOptimizationSolver::new(hyperparams))
+                },
+                None => {
+                    info!("[ACO] Using default hyperparams.");
+                    Box::new(AntColonyOptimizationSolver::default())
+                },
+            }
         },
         SolverName::ExactTsp => Box::new(ExactTspSolver{}),
         SolverName::ExactTspSomeStarts => Box::new(

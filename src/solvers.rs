@@ -73,7 +73,6 @@ pub struct ExactTspSomeStartsSolver {
 // It runs iterations of sampling and simulating "ants" that leave pheromones on
 // good paths.
 pub struct AntColonyOptimizationSolver {
-    seed: u64,
     hyperparams: HyperParams,
 }
 
@@ -186,8 +185,8 @@ impl Solver for ExactTspSomeStartsSolver {
 }
 
 impl AntColonyOptimizationSolver {
-    pub fn new(hyperparams: HyperParams, seed: u64) -> Self {
-        AntColonyOptimizationSolver { hyperparams, seed }
+    pub fn new(hyperparams: HyperParams) -> Self {
+        AntColonyOptimizationSolver { hyperparams }
     }
 }
 
@@ -209,9 +208,10 @@ impl Default for AntColonyOptimizationSolver {
             exploitation_probability: 0.3642226425600267,
             heuristic_power: 2.5583485993720037,
             base_pheromones: 2.0097671658359686,
-            local_evaporation_rate: 0.7523178610770483
+            local_evaporation_rate: 0.7523178610770483,
+            seed: 42,
         };
-        AntColonyOptimizationSolver::new(hyperparams, /*seed=*/42)
+        AntColonyOptimizationSolver::new(hyperparams)
     }
 }
 
@@ -221,7 +221,7 @@ impl Solver for AntColonyOptimizationSolver {
     }
 
     fn do_solve(&mut self, graph: &Arc<Graph>) -> Option<Solution> {
-        let mut colony = Colony::new(graph, self.hyperparams.clone(), self.seed);
+        let mut colony = Colony::new(graph, self.hyperparams.clone());
         Some(colony.run())
     }
 }

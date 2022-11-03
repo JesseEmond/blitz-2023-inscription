@@ -1,5 +1,4 @@
 // TODOs
-// - ACO parse hyperparams based on arg, sweep using that (in /tmp/)
 // - improve/sweep ACO on game #10589, to get closer to 3836
 // - implement "slow" pathfinding
 // - implement "slow" held-karp
