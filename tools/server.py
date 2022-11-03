@@ -46,7 +46,7 @@ def from_suggestion(suggestion) -> hyperparams.Hyperparams:
       heuristic_power=params['heuristic_power'],
       base_pheromones=params['base_pheromones'],
       local_evaporation_rate=params['local_evaporation_rate'],
-      )
+      seed=42)
 
 
 class Game:
@@ -185,6 +185,7 @@ def show_stats(scores: List[int]):
   print(f'Average: {sum(scores) / len(scores):.1f}')
 
 
+is_single = any(arg.startswith('--gameid=') for arg in sys.argv)
 is_sweep = '--sweep' in sys.argv
 is_eval = '--eval' in sys.argv or is_sweep
 slow = '--slow' in sys.argv
@@ -195,6 +196,9 @@ game_ids = []
 game_index = None
 game_scores = []
 client_process = None
+
+loop = asyncio.get_event_loop()
+stop = loop.create_future()
 
 if is_sweep:
   study_config = vz.StudyConfig.from_problem(vizier_problem_statement())
@@ -225,11 +229,14 @@ def start_game():
     if game_index == 0:
       hyperparams = from_suggestion(suggestions[suggestion_idx])
       print(f'Round #{rounds} Suggestion #{suggestion_idx+1}: {hyperparams}')
-      with open('hyperparams.json', 'w') as f:
+      with open('/tmp/hyperparams.json', 'w') as f:
         json.dump(hyperparams.to_dict(), f)
   env = os.environ.copy()
   env['RUST_LOG'] = 'warn'
-  client_process = subprocess.Popen(['../target/release/application'], env=env)
+  client_process = subprocess.Popen(['../target/release/application',
+                                     '--solver', 'ant-colony-optimization',
+                                     '--aco-hyperparams-file',
+                                     '/tmp/hyperparams.json'], env=env)
 
 
 def new_suggestions():
@@ -243,16 +250,25 @@ def new_suggestions():
 
 async def run():
   global game_index
+  if is_single:
+    arg = next(arg for arg in sys.argv if arg.startswith('--gameid='))
+    _, game_id = arg.split('=')
+    game_id = int(game_id)
+    with open(f'../games/{game_id}.json', 'r') as f:
+      tick = Tick.from_dict(json.load(f))
+    all_games.append(tick)
+    game_ids.append(game_id)
   if is_eval:
-    for path in glob.glob('../games/*.json'):
-      game_id = int(re.match(r'../games/(\d+).json', path).group(1))
-      with open(path, 'r') as f:
-        tick = Tick.from_dict(json.load(f))
-        if len(tick.map.ports) >= 20:
-          all_games.append(tick)
-          game_ids.append(game_id)
-        else:
-          print(f'Skipping #{game_id}, only {len(tick.map.ports)} ports')
+    if not is_single:
+      for path in glob.glob('../games/*.json'):
+        game_id = int(re.match(r'../games/(\d+).json', path).group(1))
+        with open(path, 'r') as f:
+          tick = Tick.from_dict(json.load(f))
+          if len(tick.map.ports) >= 20:
+            all_games.append(tick)
+            game_ids.append(game_id)
+          else:
+            print(f'Skipping #{game_id}, only {len(tick.map.ports)} ports')
     game_index = 0
     print(f'{len(all_games)} games in our dev set')
 
@@ -261,7 +277,7 @@ async def run():
       new_suggestions()
     if is_eval:
       start_game()
-    await asyncio.Future()
+    await stop
 
 
 
@@ -281,12 +297,8 @@ async def handler(websocket):
     data = json.loads(message)
     if data.get('type') == 'REGISTER':
       if game_index is None:
-        if any(arg.startswith('--gameid=') for arg in sys.argv):
-          arg = next(arg for arg in sys.argv if arg.startswith('--gameid='))
-          _, game_id = arg.split('=')
-          game_id = int(game_id)
-          with open(f'../games/{game_id}.json', 'r') as f:
-            game = Game(Tick.from_dict(json.load(f)), game_id)
+        if is_single:
+          game = all_games[0]
         else:
           game = Game(seen_games.GAME1, -1)
       else:
@@ -352,8 +364,11 @@ async def handler(websocket):
               if suggestion_idx == len(suggestions):
                 new_suggestions()
             else:
+              # Send final tick to have a graceful client close.
+              await websocket.send(json.dumps(game.tick.to_dict()))
               await websocket.close()
-              exit(0)
+              stop.set_result(0)
+              return
             game_index = 0
             game_scores.clear()
           reset_game = True

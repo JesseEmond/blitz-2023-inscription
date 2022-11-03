@@ -12,3 +12,4 @@ class Hyperparams:
   heuristic_power: float
   base_pheromones: float
   local_evaporation_rate: float
+  seed: int

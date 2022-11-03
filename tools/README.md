@@ -23,6 +23,7 @@ TODO: screencap of a game visualization?
   [Vizier](https://github.com/google/vizier) and evaluating on all available
   games in `../games`. For each Vizier suggestion, hyperparameters are written
   to disk so that the launched bot picks them up.
+  - Can use `python server.py --sweep --gameid=5202` to sweep on a single game.
 
 ## Online Server Automation / Games Collection
 [`collect_games.py`](collect_games.py) automatically launches games on the
