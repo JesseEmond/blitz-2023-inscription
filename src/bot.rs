@@ -1,6 +1,4 @@
 // TODOs
-// - pass solver from bot creation
-// - determine solver from args cmdline
 // - ACO parse hyperparams based on arg, sweep using that (in /tmp/)
 // - improve/sweep ACO on game #10589, to get closer to 3836
 // - implement "slow" pathfinding

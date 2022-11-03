@@ -66,7 +66,7 @@ pub struct ExactTspSolver;
 // optimal starting points, see ExactTspSolver for that.
 pub struct ExactTspSomeStartsSolver {
     // Max number of starts to try.
-    max_starts: usize
+    pub max_starts: usize
 }
 
 // Solve using Ant Colony Optimization to find a solution.
