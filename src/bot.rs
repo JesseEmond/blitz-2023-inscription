@@ -1,5 +1,6 @@
 // TODOs
-// - improve/sweep ACO on game #10589, to get closer to 3836
+// - optimal solver that considers shorter tours, too -- anything higher than
+//   3836 seen?
 // - implement "slow" pathfinding
 // - implement "slow" held-karp
 // - write-up outline

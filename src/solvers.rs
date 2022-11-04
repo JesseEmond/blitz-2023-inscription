@@ -1,5 +1,6 @@
 // Different solver implementations to plan a macro sequence of paths to follow.
 
+// TODO: redo with a larger set, and include OptimalSolver
 // On a dev set with 123 games:
 // Solver                                  | Average |  Max | <1s? |
 // -----------------------------------------------------------------
@@ -50,14 +51,11 @@ pub struct NearestNeighborSolver {
 }
 
 // Solver that solves the exact Traveling Salesman Problem on the graph using
-// Held-Karp for each possible starting point, going to all ports.
+// Held-Karp for each possible starting point, going to *all* ports.
 // For games where the optimal score has all ports, this will find the optimal
 // possible score.
 // With 4 physical cores, this can fit under ~1s based on local tests, but this
 // is not the case on the server.
-// TODO: for a fully optimal solver, we could consider going home after each set
-// size |S| and pick the best observed score, but this is likely not worth it
-// for top leaderboard potential games.
 pub struct ExactTspSolver;
 
 // Solver that solves the Traveling Salesman Problem on the graph using
@@ -75,6 +73,13 @@ pub struct ExactTspSomeStartsSolver {
 pub struct AntColonyOptimizationSolver {
     hyperparams: HyperParams,
 }
+
+// Solver that solves the TSP on the graph using Held-Karp for each possible
+// starting point, then considers every possible port subset S, either staying
+// there until the end or looping home if there's time.
+// Note that this solver is slow and should only be used for upper bound offline
+// evals.
+pub struct OptimalSolver;
 
 impl Solver for NearestNeighborSolver {
     fn name(&self) -> &str {
@@ -229,5 +234,16 @@ impl Solver for AntColonyOptimizationSolver {
     fn do_solve(&mut self, graph: &Arc<Graph>) -> Option<Solution> {
         let mut colony = Colony::new(graph, self.hyperparams.clone());
         Some(colony.run())
+    }
+}
+
+impl Solver for OptimalSolver {
+    fn name(&self) -> &str {
+        "optimal"
+    }
+
+    fn do_solve(&mut self, _graph: &Arc<Graph>) -> Option<Solution> {
+        // TODO implement
+        None
     }
 }

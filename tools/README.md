@@ -92,4 +92,6 @@ along with some last N games stats for my team & the current top team.
 - [`hyperparams.py`](hyperparams.py): data structure for hyperparameters for
   Ant Colony Optimization. Written to disk when sweeping. Must match the
   expected format by the matching struct in the Rust code.
+- [`deduce_score.py`](deduce_score.py): from a given score, deduce the possible
+  breakdowns of visited ports vs. ticks.
 - [`game_message.py`](game_message.py): from the Python bot starterkit.

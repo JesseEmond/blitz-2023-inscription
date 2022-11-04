@@ -29,6 +29,7 @@ const FLAT_SIZE: usize = (MAX_PORTS - 1) * NUM_MASKS;
 type Set = [VertexId; MAX_PORTS];
 type Cost = u16;
 
+#[derive(Clone)]
 struct Tour {
     cost: Cost,  // in terms of total distance
     vertices: Vec<VertexId>,
@@ -226,6 +227,14 @@ impl HeldKarp {
         info!("Starting at port ID {}, cost would be {}, vertices: {vertices:?}",
               start, total_cost);
         Tour { cost: total_cost, vertices: vertices, }
+    }
+
+    // Checks every subset of ports to see if visiting these would give a better
+    // score than the best full tour found. This is slow.
+    pub fn _consider_shorter_tours(&self, _graph: &Graph, _start: VertexId,
+                                  full_tour: &Tour) -> Tour {
+        // TODO: impl
+        full_tour.clone()
     }
 
     // Index of the start where the given 'set' would be in a flattened array.

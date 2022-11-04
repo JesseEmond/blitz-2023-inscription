@@ -56,9 +56,17 @@ impl Grid {
     }
 
     pub fn init(&mut self, map: &Map, schedule: &[u8]) {
+        let width = map.columns as usize;
+        let height = map.rows as usize;
         let topology = &map.topology.0;
         self.topology = array_init::array_init(
-            |y| array_init::array_init(|x| topology[y][x] as u8));
+            |y| array_init::array_init(|x| {
+                if x < width && y < height {
+                    topology[y][x] as u8
+                } else {
+                    u8::MAX
+                }
+                }));
         assert!(schedule.len() == TICK_OFFSETS, "Unsupported schedule len: {}",
                 schedule.len());
         self.tide_schedule = array_init::from_iter(schedule.to_owned()).unwrap();
