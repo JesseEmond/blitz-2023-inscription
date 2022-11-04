@@ -1,3 +1,4 @@
+// TODO: rename to ant_system.rs (+ other references)
 use arrayvec::ArrayVec;
 use log::{debug};
 use serde::{Deserialize};
@@ -15,18 +16,21 @@ use crate::graph::{Graph, VertexId};
 // Based on the documentation at:
 // https://staff.washington.edu/paymana/swarm/stutzle99-eaecs.pdf
 // http://www.scholarpedia.org/article/Ant_colony_optimization
+// https://www.researchgate.net/publication/277284831_MAX-MIN_ant_system
 
-// TODO: to consider trying:
-// - Compare to AS
-// - MMAS (min-max ant system): bounds on pheromone, init to max
-// - Update pheromones using local best
-// - Update pheromones using global best on a schedule
-// - Pheromone at the edge-tick_offset level
-// - Update best when score is equal? Only sometimes?
+// TODO: Add sweepable params to:
+// - Add pheromones from all ants
+// - Update pheromones using local best with probability
+// - Update pheromones considering global best only after X% iterations
+// - global score update on equality
+
+// TODO: try
+// - What is missing from ~vanilla AS?
+// - What is missing from ~vanilla ACO?
+// - Pheromone at the tick_offset level
 // - Rank-based version of any-system?
 // - Include other local search before updates?
 // - Update both directions of edge?
-// - Update only trails for specific tick offset?
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct HyperParams {
@@ -51,12 +55,19 @@ pub struct HyperParams {
     /// 'β' (beta) used when sampling actions, applied to the heuristic η: η^β
     pub heuristic_power: f32,
 
-    /// 'τ0' base pheromones for local updates, in the following formula:
-    /// τ = (1 − ξ) · τ + ξ τ0
-    pub base_pheromones: f32,
     /// 'ξ' evaporation rate for local updates, in the following formula:
     /// τ = (1 − ξ) · τ + ξ τ0
     pub local_evaporation_rate: f32,
+
+    /// Min τ value (from MAX-MIN Ant System).
+    /// Also used as a base 'τ0' value for local updates, in the ACO formula:
+    /// τ = (1 − ξ) · τ + ξ τ0
+    pub min_pheromones: f32,
+    /// Max τ value (from MAX-MIN Ant System).
+    pub max_pheromones: f32,
+    /// Ratio from 0 to 1 for the initial pheromone value.
+    /// A value of 0 means min_pheromones, a value of 1 means max_pheromones.
+    pub pheromones_init_ratio: f32,
 
     /// Seed to use for randomness.
     pub seed: u64,
@@ -93,6 +104,9 @@ pub struct VertexTrails {
     // Pre-computed per-edge eta^beta, for each tick offset.
     // eta_pows[tick_offset][to]
     pub eta_pows: EtaPows,
+    // Min and max pheromone values
+    pub min: f32,
+    pub max: f32,
 }
 
 pub struct Colony {
@@ -113,8 +127,10 @@ impl HyperParams {
             evaporation_rate: 0.2,
             exploitation_probability: 0.1,
             heuristic_power: 3.0,
-            base_pheromones: 0.01,
             local_evaporation_rate: 0.01,
+            min_pheromones: 0.01,
+            max_pheromones: 250.0,
+            pheromones_init_ratio: 1.0,
             seed: 42,
         }
     }
@@ -253,37 +269,48 @@ impl VertexTrails {
             }).collect()
         }).collect();
 
+        let base_pheromones = hyperparams.pheromones_init_ratio * (
+            hyperparams.max_pheromones - hyperparams.min_pheromones);
+
         VertexTrails {
             vertex: vertex_id,
-            pheromones: ArrayVec::from_iter(vec![hyperparams.base_pheromones; graph.ports.len()]),
+            pheromones: ArrayVec::from_iter(vec![base_pheromones; graph.ports.len()]),
             offset_trail_weights: ArrayVec::from_iter(
                 vec![ArrayVec::from_iter(vec![1.0; graph.ports.len()]); TICK_OFFSETS]),
+            min: hyperparams.min_pheromones,
+            max: hyperparams.max_pheromones,
             eta_pows,
         }
     }
 
     pub fn evaporate_add(&mut self, to: VertexId, evaporation: f32,
                          pheromone: f32) {
-        self.pheromones[to as usize] = (1.0 - evaporation * self.pheromones[to as usize])
-            + evaporation * pheromone;
+        self.set_pheromones(
+            to, (1.0 - evaporation) * self.pheromones[to as usize]
+            + evaporation * pheromone);
         self.update_weights(to);
     }
 
     pub fn add(&mut self, to: VertexId, pheromone: f32) {
-        self.pheromones[to as usize] += pheromone;
+        self.set_pheromones(to, self.pheromones[to as usize] + pheromone);
         self.update_weights(to);
     }
 
     pub fn evaporate(&mut self, to: VertexId, evaporation_rate: f32) {
-        self.pheromones[to as usize] *= 1.0 - evaporation_rate;
+        self.set_pheromones(
+            to, self.pheromones[to as usize] * (1.0 - evaporation_rate));
         self.update_weights(to);
     }
 
-    pub fn update_weights(&mut self, to: VertexId) {
+    fn update_weights(&mut self, to: VertexId) {
         for offset in 0..self.offset_trail_weights.len() {
             let tau = self.pheromones[to as usize];
             self.offset_trail_weights[offset][to as usize] = tau * self.eta_pow(offset as u8, to);
         }
+    }
+
+    fn set_pheromones(&mut self, to: VertexId, pheromones: f32) {
+        self.pheromones[to as usize] = pheromones.clamp(self.min, self.max);
     }
 
     pub fn weights(&self, tick: u16) -> &EdgeWeights {
@@ -404,7 +431,7 @@ impl Colony {
         while let Some(to) = self.sample_option(&ant) {
             // Local trail update
             let pheromone_add = self.hyperparams.local_evaporation_rate
-                * self.hyperparams.base_pheromones;
+                * self.hyperparams.min_pheromones;
             self.trails[ant.current as usize].evaporate_add(to,
                 self.hyperparams.local_evaporation_rate,pheromone_add);
             // TODO: also update other direction?
@@ -430,11 +457,7 @@ impl Colony {
         // Global trail update
         // TODO: sometimes pick local best?
         let best = self.global_best.as_ref().expect("No global best at update time!");
-        let upper_bound_score = eval_score((self.graph.ports.len() + 1) as u32,
-                                           /*ticks=*/self.graph.ports.len() as u16,
-                                           /*looped=*/true);
-        // TODO: compute pheromone add differently?
-        let add = 1.0 / (upper_bound_score + 1 - best.score) as f32;
+        let add = 1.0 / (best.tick as f32);
 
         let pheromone_add = self.hyperparams.evaporation_rate * add;
         let mut from = best.start;

@@ -192,23 +192,29 @@ impl AntColonyOptimizationSolver {
 
 impl Default for AntColonyOptimizationSolver {
     fn default() -> Self {
-        // From sweep:
+        // From sweep (15 rounds of 5 iters, only on game #10589):
         // Point(
-        //  hyperparams=Hyperparams(iterations=464, ants=63,
-        //                          evaporation_rate=0.7800131108465345,
-        //                          exploitation_probability=0.3642226425600267,
-        //                          heuristic_power=2.5583485993720037,
-        //                          base_pheromones=2.0097671658359686,
-        //                          local_evaporation_rate=0.7523178610770483),
-        //  score=3078.174695652174)
+        //   hyperparams=Hyperparams(iterations=469,
+        //                           ants=72,
+        //                           evaporation_rate=0.7165626675063436,
+        //                           exploitation_probability=0.2681295531581947,
+        //                           heuristic_power=3.5305661701563418,
+        //                           local_evaporation_rate=0.7544669066991354,
+        //                           min_pheromones=0.18408083030232747,
+        //                           max_pheromones=5.243022596076836,
+        //                           pheromones_init_ratio=0.7213026402824096,
+        //                           seed=42),
+        //   score=3839.601370607376)
         let hyperparams = HyperParams {
-            iterations: 464,
-            ants: 63,
-            evaporation_rate: 0.7800131108465345,
-            exploitation_probability: 0.3642226425600267,
-            heuristic_power: 2.5583485993720037,
-            base_pheromones: 2.0097671658359686,
-            local_evaporation_rate: 0.7523178610770483,
+            iterations: 469,
+            ants: 72,
+            evaporation_rate: 0.7165626675063436,
+            exploitation_probability: 0.2681295531581947,
+            heuristic_power: 3.5305661701563418,
+            local_evaporation_rate: 0.7544669066991354,
+            min_pheromones: 0.18408083030232747,
+            max_pheromones: 5.243022596076836,
+            pheromones_init_ratio: 0.7213026402824096,
             seed: 42,
         };
         AntColonyOptimizationSolver::new(hyperparams)

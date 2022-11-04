@@ -10,6 +10,8 @@ class Hyperparams:
   evaporation_rate: float
   exploitation_probability: float
   heuristic_power: float
-  base_pheromones: float
   local_evaporation_rate: float
+  min_pheromones: float
+  max_pheromones: float
+  pheromones_init_ratio: float
   seed: int

@@ -65,6 +65,13 @@ TODO: produce gif of iterations and include here?
 run and plots, for each hyperparameter, how the scores behave in the observed
 range of the parameter. This is used to help pick sweep ranges.
 
+Logs from sweeping (needed for `analyze_sweep.py`) can be collected for example
+with:
+
+```sh
+python -u server.py --sweep | tee /tmp/sweep_logs.txt
+```
+
 TODO: include sweep param example screenshot that suggested a narrower range
 
 ## Leaderboard Analysis

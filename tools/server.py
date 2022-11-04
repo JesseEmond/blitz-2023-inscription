@@ -28,8 +28,10 @@ def vizier_problem_statement() -> vz.ProblemStatement:
   problem.search_space.root.add_float_param('evaporation_rate', 0.3, 0.8)
   problem.search_space.root.add_float_param('exploitation_probability', 0.0, 0.4)
   problem.search_space.root.add_float_param('heuristic_power', 1.0, 5.0)
-  problem.search_space.root.add_float_param('base_pheromones', 0.1, 5.0)
   problem.search_space.root.add_float_param('local_evaporation_rate', 0.3, 0.8)
+  problem.search_space.root.add_float_param('min_pheromones', 0.0, 1.0)
+  problem.search_space.root.add_float_param('max_pheromones', 1.0, 500.0)
+  problem.search_space.root.add_float_param('pheromones_init_ratio', 0.0, 1.0)
   problem.metric_information.append(
       vz.MetricInformation(name='maximize_score',
                            goal=vz.ObjectiveMetricGoal.MAXIMIZE))
@@ -44,8 +46,10 @@ def from_suggestion(suggestion) -> hyperparams.Hyperparams:
       evaporation_rate=params['evaporation_rate'],
       exploitation_probability=params['exploitation_probability'],
       heuristic_power=params['heuristic_power'],
-      base_pheromones=params['base_pheromones'],
       local_evaporation_rate=params['local_evaporation_rate'],
+      min_pheromones=params['min_pheromones'],
+      max_pheromones=params['max_pheromones'],
+      pheromones_init_ratio=params['pheromones_init_ratio'],
       seed=42)
 
 
@@ -298,7 +302,7 @@ async def handler(websocket):
     if data.get('type') == 'REGISTER':
       if game_index is None:
         if is_single:
-          game = all_games[0]
+          game = Game(all_games[0], game_ids[0])
         else:
           game = Game(seen_games.GAME1, -1)
       else:
@@ -307,6 +311,7 @@ async def handler(websocket):
         print(f"Started game #{game.id} ({len(game.tick.map.ports)} ports "
               f"{game.tick.map.rows}x{game.tick.map.columns})")
       if not fast: game.show()
+      max_tick_time = 0
       await websocket.send(json.dumps(game.tick.to_dict()))
       tick_start = time.time()
     elif data.get('type') == 'COMMAND':
@@ -314,6 +319,7 @@ async def handler(websocket):
         print("Game not started.")
         continue
       elapsed = time.time() - tick_start
+      max_tick_time = max(max_tick_time, elapsed)
       if elapsed > 0.95:
         print(f"[!WARNING!] TICK TOO SLOW! {elapsed * 1000}ms")
       data_action = data.get('action', {})
@@ -352,7 +358,7 @@ async def handler(websocket):
             if is_sweep:
               avg_score = sum(game_scores) / len(game_scores)
               max_score = max(game_scores)
-              metric = avg_score + max_score / 1000
+              metric = avg_score + max_score / 1000 - max_tick_time
               hyperparams = from_suggestion(suggestions[suggestion_idx])
               print(f'[SCORE]{metric} {json.dumps(hyperparams.to_dict())}')
               measurement = vz.Measurement({'maximize_score': metric})
