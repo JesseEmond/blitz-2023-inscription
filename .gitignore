@@ -5,8 +5,6 @@ Cargo.lock
 
 **/*.rs.bk
 
-devnull.zip
-
 # From profiling
 perf.data
 perf.data.old
