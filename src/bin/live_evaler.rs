@@ -17,7 +17,7 @@ use thiserror::Error;
 
 use blitz_bot::game_interface::{GameTick};
 use blitz_bot::graph::{Graph};
-use blitz_bot::solvers::{ExactTspSolver, Solver};
+use blitz_bot::solvers::{OptimalSolver, Solver};
 
 #[derive(Debug, Clone)]
 struct SavedGame {
@@ -58,7 +58,7 @@ fn evaluate_game(saved_game: &SavedGame) -> Result<i32, GameEvalError> {
 
     if tick.map.ports.len() >= 20 {
         let graph: Arc<Graph> = Arc::new(Graph::new(&tick));
-        let solution = ExactTspSolver{}.solve(&graph)
+        let solution = OptimalSolver{}.solve(&graph)
             .expect("no solution possible on game");
         Ok(solution.score)
     } else {
