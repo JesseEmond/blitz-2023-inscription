@@ -75,8 +75,8 @@ pub struct AntColonyOptimizationSolver {
 }
 
 // Solver that solves the TSP on the graph using Held-Karp for each possible
-// starting point, then considers every possible port subset S, either staying
-// there until the end or looping home if there's time.
+// starting point, then considers every possible port subset S, looping to
+// start.
 // Note that this solver is slow and should only be used for upper bound offline
 // evals.
 pub struct OptimalSolver;
@@ -175,7 +175,7 @@ impl Solver for ExactTspSolver {
 
     fn do_solve(&mut self, graph: &Arc<Graph>) -> Option<Solution> {
         let max_starts = graph.ports.len();  // try all starts
-        held_karp(&graph, max_starts)
+        held_karp(&graph, max_starts, /*check_shorter_tours=*/false)
     }
 }
 
@@ -185,7 +185,7 @@ impl Solver for ExactTspSomeStartsSolver {
     }
 
     fn do_solve(&mut self, graph: &Arc<Graph>) -> Option<Solution> {
-        held_karp(&graph, self.max_starts)
+        held_karp(&graph, self.max_starts, /*check_shorter_tours=*/false)
     }
 }
 
@@ -242,8 +242,8 @@ impl Solver for OptimalSolver {
         "optimal"
     }
 
-    fn do_solve(&mut self, _graph: &Arc<Graph>) -> Option<Solution> {
-        // TODO implement
-        None
+    fn do_solve(&mut self, graph: &Arc<Graph>) -> Option<Solution> {
+        let max_starts = graph.ports.len();  // try all starts
+        held_karp(&graph, max_starts, /*check_shorter_tours=*/true)
     }
 }

@@ -5,18 +5,20 @@ use serde_json::Value;
 
 use blitz_bot::bot::Bot;
 use blitz_bot::client::WebSocketGameClient;
-use blitz_bot::solvers::{AntColonyOptimizationSolver, ExactTspSolver, ExactTspSomeStartsSolver, NearestNeighborSolver, Solver};
+use blitz_bot::solvers::{AntColonyOptimizationSolver, ExactTspSolver, ExactTspSomeStartsSolver, NearestNeighborSolver, OptimalSolver, Solver};
 
 #[derive(ValueEnum, Clone)]
 enum SolverName {
     /// Ant colony optimization
     AntColonyOptimization,
-    /// Exact TSP solver, tries all possible starts.
+    /// Exact TSP solver, tries all possible starts for a full tour.
     ExactTsp,
-    /// Exact TSP solver, only try the configured amount of starts.
+    /// Exact TSP solver, only tries the configured # of starts for a full tour.
     ExactTspSomeStarts,
     /// Greedy nearest-neighbor solver.
     NearestNeighbor,
+    /// Optimal solver, does exact TSP for all starts, for all ports subsets.
+    Optimal,
 }
 
 #[derive(Parser)]
@@ -60,6 +62,7 @@ fn new_solver(cli: Cli) -> Box<dyn Solver> {
         SolverName::ExactTspSomeStarts => Box::new(
             ExactTspSomeStartsSolver { max_starts: cli.exact_tsp_max_starts }),
         SolverName::NearestNeighbor => Box::new(NearestNeighborSolver::new()),
+        SolverName::Optimal => Box::new(OptimalSolver{}),
     }
 }
 

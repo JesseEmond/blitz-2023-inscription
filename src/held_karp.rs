@@ -35,7 +35,9 @@ struct Tour {
     vertices: Vec<VertexId>,
 }
 
-pub fn held_karp(graph: &Arc<Graph>, max_starts: usize) -> Option<Solution> {
+pub fn held_karp(
+    graph: &Arc<Graph>, max_starts: usize, check_shorter_tours: bool
+    ) -> Option<Solution> {
     let mut best_tour = Tour { cost: Cost::MAX, vertices: Vec::new() };
     let mut handles = vec![];
     let (tx, rx) = mpsc::channel();
@@ -46,16 +48,22 @@ pub fn held_karp(graph: &Arc<Graph>, max_starts: usize) -> Option<Solution> {
             let mut held_karp = HeldKarp::new();
             for start in (i..usize::min(max_starts, graph.ports.len()))
                 .step_by(NUM_THREADS) {
-                let tour = held_karp.traveling_salesman(&graph,
-                                                        start as VertexId);
-                tour.verify_tour(&graph);
-                tx.send(tour).unwrap();
+                let start = start as VertexId;
+                let full_tour = held_karp.traveling_salesman(&graph, start);
+                full_tour.verify_tour(&graph);
+                if check_shorter_tours {
+                    let tour = held_karp.consider_shorter_tours(&graph, start,
+                                                                &full_tour);
+                    tx.send(tour).unwrap();
+                } else {
+                    tx.send(full_tour).unwrap();
+                }
             }
         }));
     }
     drop(tx);  // Drop the last sender, wait until all threads are done.
     while let Ok(tour) = rx.recv() {
-        if tour.cost < best_tour.cost {
+        if tour.score(graph) > best_tour.score(graph) {
             best_tour = tour;
         }
     }
@@ -77,12 +85,14 @@ struct HeldKarp {
     p: Vec<VertexId>,
 
     // Precomputed binomial[m][k] gives m-choose-k.
+    // TODO: refactor to Binomial helper
     binomial: [[usize; MAX_PORTS]; MAX_PORTS],
     // For a given subset size 's', the start index in the array 'v' for that
     // subset's data.
     b: [usize; MAX_PORTS],
 }
 
+// TODO: refactor set handling to custom struct?
 fn first_set(set: &mut Set, s: usize) {
     for i in 0..s {
         set[i] = i as VertexId;
@@ -132,16 +142,10 @@ impl HeldKarp {
             self.p[i] = VertexId::MAX;
         }
 
-        // TODO: try having g[mask][b][e], computing all starts at once?
-        // TODO: precompute lower-bound for all g[mask]? skip computations 
-        // with lower-bound > seen? (branch & bound idea)
-
-        // Sets are in the space where the 'start' vertex is removed, this
-        // utility is used to convert back to the vertex IDs.
-        let untranslated: [VertexId; MAX_PORTS] = array_init::array_init(|v: usize| {
-            let v = v as VertexId;
-            if v < start { v } else { v + 1 }
-        });
+        // Precompute conversion from IDs ignoring 'start', back to their proper
+        // VertexId.
+        let untranslated: [VertexId; MAX_PORTS] = array_init::array_init(
+            |v: usize| self.untranslate(start, v as VertexId));
         let mut set: Set = [0; MAX_PORTS];
         first_set(&mut set, 1);
 
@@ -162,6 +166,7 @@ impl HeldKarp {
         // From |S|=s, deduce S' (|S'| = s+1) g(S', k) by picking the
         // before-last city that minimizes cost, for each k.
         let max_set_items = graph.ports.len() - 1;
+        // TODO: helper struct to support this
         let mut set_minus_k = [0; MAX_PORTS];
         for s in 2..=max_set_items {
             first_set(&mut set, s);
@@ -209,13 +214,22 @@ impl HeldKarp {
                 last_city = set[k];
             }
         }
+        let vertices = self.backtrack(start, last_city, &set, max_set_items);
+        info!("Starting at port ID {}, cost would be {}, vertices: {vertices:?}",
+              start, total_cost);
+        Tour { cost: total_cost, vertices }
+    }
 
-        // Backtrack to get vertices.
-        let mut vertices = Vec::with_capacity(graph.ports.len() + 1);
+    // Backtrack to get vertices for a tour.
+    fn backtrack(
+        &self, start: VertexId, last: VertexId, set: &Set, set_size: usize
+        ) -> Vec<VertexId> {
+        let mut set = set.clone();
+        let mut vertices = Vec::with_capacity(set_size + 2);
         vertices.push(start);
-        let mut vertex = last_city;
-        for s in (1..=max_set_items).rev() {
-            vertices.push(untranslated[vertex as usize]);
+        let mut vertex = last;
+        for s in (1..=set_size).rev() {
+            vertices.push(self.untranslate(start, vertex));
             let vertex_idx = set.iter().position(|&v| v == vertex).unwrap();
             vertex = self.p[self.flat_index_region(&set, s) + vertex_idx];
             for i in vertex_idx..s {
@@ -224,17 +238,60 @@ impl HeldKarp {
         }
         vertices.push(start);
         vertices.reverse();
-        info!("Starting at port ID {}, cost would be {}, vertices: {vertices:?}",
-              start, total_cost);
-        Tour { cost: total_cost, vertices: vertices, }
+        vertices
+    }
+
+    // Sets are in the space where the 'start' vertex is removed, this utility
+    // is used to convert back to the vertex IDs.
+    fn untranslate(&self, start: VertexId, v: VertexId) -> VertexId {
+        if v < start { v } else { v + 1 }
     }
 
     // Checks every subset of ports to see if visiting these would give a better
     // score than the best full tour found. This is slow.
-    pub fn _consider_shorter_tours(&self, _graph: &Graph, _start: VertexId,
+    pub fn consider_shorter_tours(&self, graph: &Graph, start: VertexId,
                                   full_tour: &Tour) -> Tour {
-        // TODO: impl
-        full_tour.clone()
+        let mut best_tour = full_tour.clone();
+        let mut best_score = full_tour.score(graph);
+        // Note: assume that best_score is valid (<= max ticks), for simplicity.
+        assert!(full_tour.cost <= graph.max_ticks,
+                "Maps with invalid full-tours not supported");
+        // Note: only considering tours that loop (i.e. each city is worth
+        // 150 * 2 pts). 
+        let min_ports = ((best_score + 299) / 300) as usize;
+
+        let mut set: Set = [0; MAX_PORTS];
+        let min_set_items = min_ports - 1;  // -1 since start is implicit
+        let max_set_items = graph.ports.len() - 1; // no need t
+        // Note: max_set_items excluded since we already have full_tour.
+        for s in min_set_items..max_set_items {
+            first_set(&mut set, s);
+            while (set[s - 1] as usize) < graph.ports.len() - 1 {
+                let k_index_base = self.flat_index_region(&set, s);
+                for k in 0..s {
+                    let current_cost = self.g[k_index_base + k];
+                    let k_start_cost = graph.cost(
+                        graph.tick_offset(current_cost),
+                        self.untranslate(start, set[k]), start);
+                    // Note: no '+1' for final dock -- it's free.
+                    let cost = current_cost + (k_start_cost as Cost);
+                    let visits = s + 2;  // +2 for the start port (looped)
+                    let score = eval_score(visits as u32, cost,
+                                           /*looped=*/true);
+                    if score > best_score {
+                        best_tour = Tour {
+                            cost,
+                            vertices: self.backtrack(start, k as VertexId,
+                                                     &set, s),
+                        };
+                        best_score = score;
+                    }
+                }
+                next_set(&mut set, s);
+            }
+        }
+
+        best_tour
     }
 
     // Index of the start where the given 'set' would be in a flattened array.
@@ -297,20 +354,19 @@ impl HeldKarp {
 
     // Use for debugging
     fn _show(&self, set: &Set, s: usize, e_idx: usize, start: VertexId) -> String {
-        let untranslate = |v: VertexId| if v < start { v } else { v + 1 };
         info!("looking up idx={} with s={}", self.flat_index_region(set, s) + e_idx, s);
         let g = self.g[self.flat_index_region(set, s) + e_idx];
         let p = self.p[self.flat_index_region(set, s) + e_idx];
         format!("g({mask}, {e}) = {g}   p({mask}, {e}) = {p}",
                 mask = self._show_set(set, s, start),
-                e = untranslate(set[e_idx]) + 1, p = untranslate(p) + 1)
+                e = self.untranslate(start, set[e_idx]) + 1,
+                p = self.untranslate(start, p) + 1)
     }
 
     // Use for debugging
     fn _show_set(&self, set: &Set, s: usize, start: VertexId) -> String {
-        let untranslate = |v: VertexId| if v < start { v } else { v + 1 };
         let set_vertices: Vec<_> = (0..s)
-            .map(|i| (untranslate(set[i])+1).to_string()).collect();
+            .map(|i| (self.untranslate(start, set[i])+1).to_string()).collect();
         format!("{{{}}}", set_vertices.join(","))
     }
 }
@@ -318,8 +374,6 @@ impl HeldKarp {
 impl Tour {
     fn to_solution(&self, graph: &Graph) -> Option<Solution> {
         if self.cost < graph.max_ticks {
-            let visits = self.vertices.len();
-            let score = eval_score(visits as u32, self.cost, /*looped=*/true);
             let spawn = graph.ports[self.vertices[0] as usize];
             let mut paths = Vec::with_capacity(self.vertices.len() - 1);
             let mut tick = graph.start_tick + 1;  // +1 to dock spawn
@@ -330,10 +384,23 @@ impl Tour {
                 paths.push(path.clone());
                 tick += path.cost + 1;  // + 1 to dock it
             }
-            Some(Solution { score: score, spawn: spawn, paths: paths })
+            Some(Solution { score: self.score(graph), spawn, paths })
         } else {
             None
         }
+    }
+
+    fn score(&self, graph: &Graph) -> i32 {
+        if self.vertices.is_empty() {
+            return 0;
+        }
+        let visits = self.vertices.len();
+        let did_loop = self.vertices.last().unwrap() == self.vertices.first().unwrap();
+        assert!(did_loop, "Only support looping tours");
+        let ticks = if did_loop { self.cost } else { graph.max_ticks };
+        // Note: to support the following, must remove visits with tick > max
+        assert!(ticks <= graph.max_ticks, "Tour going over limit not supported");
+        eval_score(visits as u32, ticks, did_loop)
     }
 
     fn verify_tour(&self, graph: &Graph) {
