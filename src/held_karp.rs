@@ -251,11 +251,9 @@ impl HeldKarp {
     // score than the best full tour found. This is slow.
     pub fn consider_shorter_tours(&self, graph: &Graph, start: VertexId,
                                   full_tour: &Tour) -> Tour {
+        let full_tour_score = full_tour.score(graph);
         let mut best_tour = full_tour.clone();
-        let mut best_score = full_tour.score(graph);
-        // Note: assume that best_score is valid (<= max ticks), for simplicity.
-        assert!(full_tour.cost <= graph.max_ticks,
-                "Maps with invalid full-tours not supported");
+        let mut best_score = full_tour_score;
         // Note: only considering tours that loop (i.e. each city is worth
         // 150 * 2 pts). 
         let min_ports = ((best_score + 299) / 300) as usize;
@@ -281,8 +279,7 @@ impl HeldKarp {
                     if score > best_score {
                         best_tour = Tour {
                             cost,
-                            vertices: self.backtrack(start, k as VertexId,
-                                                     &set, s),
+                            vertices: self.backtrack(start, set[k], &set, s),
                         };
                         best_score = score;
                     }
@@ -291,6 +288,11 @@ impl HeldKarp {
             }
         }
 
+        if best_tour.cost < full_tour.cost {
+            info!("New best! Start@{}, cost={}, score={}(>{}), ports={}, vertices: {:?}",
+                  start, best_tour.cost, best_score, full_tour_score,
+                  best_tour.vertices.len()-1, best_tour.vertices);
+        }
         best_tour
     }
 
@@ -390,16 +392,32 @@ impl Tour {
         }
     }
 
+    // Number of vertices in our path that would go past the max_ticks (and thus
+    // don't count as visits).
+    fn num_vertices_after_max(&self, graph: &Graph) -> usize {
+        let mut tick = graph.start_tick + 1;  // +1 to dock start
+        for i in 1..self.vertices.len() {
+            let from = self.vertices[i-1];
+            let to = self.vertices[i];
+            // +1 to dock port
+            let cost = graph.cost(graph.tick_offset(tick), from, to);
+            tick += (cost as u16) + 1;
+            if tick > graph.max_ticks {
+                return self.vertices.len() - i;
+            }
+        }
+        0
+    }
+
     fn score(&self, graph: &Graph) -> i32 {
         if self.vertices.is_empty() {
             return 0;
         }
-        let visits = self.vertices.len();
-        let did_loop = self.vertices.last().unwrap() == self.vertices.first().unwrap();
-        assert!(did_loop, "Only support looping tours");
+        let overflow = self.num_vertices_after_max(graph);
+        let visits = self.vertices.len() - overflow;
+        let did_loop = overflow == 0 &&
+            self.vertices.last().unwrap() == self.vertices.first().unwrap();
         let ticks = if did_loop { self.cost } else { graph.max_ticks };
-        // Note: to support the following, must remove visits with tick > max
-        assert!(ticks <= graph.max_ticks, "Tour going over limit not supported");
         eval_score(visits as u32, ticks, did_loop)
     }
 
