@@ -149,11 +149,11 @@ impl Ant {
         }
     }
 
-    pub fn reset(&mut self, start: VertexId, tick: u16, tick_offset: u8) {
+    pub fn reset(&mut self, start: VertexId, tick: u16, graph: &Graph) {
         self.start = start;
         self.current = start;
         self.tick = tick + 1;  // Time to dock our start
-        self.tick_offset = tick_offset;
+        self.tick_offset = graph.tick_offset(self.tick);
         self.path.clear();
         assert!(start < 64);
         self.seen = 1u64 << start;
@@ -161,10 +161,11 @@ impl Ant {
 
     fn visit(&mut self, port: VertexId, graph: &Graph) {
         self.path.push(port);
-        self.tick_offset = graph.tick_offset(self.tick);
         let cost = graph.cost(self.tick_offset, self.current, port);
         self.current = port;
-        self.tick += (cost + 1) as u16;  // +1 to dock
+        let dock_cost = if port == self.start { 0 } else { 1 };
+        self.tick += (cost + dock_cost) as u16;
+        self.tick_offset = graph.tick_offset(self.tick);
         self.score = self.compute_score(graph, /*simulate_to_end=*/false);
         if self.seen & (1u64 << port) != 0 {
             assert!(port == self.start,
@@ -181,8 +182,6 @@ impl Ant {
         let visits = self.path.len() + 1;  // +1 for spawn
         let tick = if simulate_to_end && !looped {
             graph.max_ticks
-        } else if looped {
-            self.tick - 1  // last docking home tick doesn't count
         } else {
             self.tick
         };
@@ -214,7 +213,8 @@ impl Ant {
         let mut vertex = self.start;
         for to in &self.path[..num_edges] {
             let cost = graph.cost(graph.tick_offset(tick), vertex, *to);
-            tick += (cost as u16) + 1;  // +1 to dock it
+            let dock_cost = if *to == self.start { 0 } else { 1 };
+            tick += (cost as u16) + dock_cost;
             vertex = *to;
         }
         (vertex, tick)
@@ -246,9 +246,27 @@ impl Ant {
             }
             self.path.truncate(go_home_index);
             self.tick = tick;
+            self.tick_offset = graph.tick_offset(tick);
             self.current = vertex;
             self.visit(self.start, graph);
             assert!(self.compute_score(graph, /*simulate_to_end=*/true) == best_score);
+        }
+    }
+
+    fn to_solution(&self, graph: &Graph) -> Solution {
+        let mut repeat_ant = Ant::new();
+        repeat_ant.reset(self.start, graph.start_tick, graph);
+        let mut paths = Vec::new();
+        for to in &self.path {
+            let path = graph.path(graph.tick_offset(repeat_ant.tick),
+                                  repeat_ant.current, *to);
+            paths.push(path.clone());
+            repeat_ant.visit(*to, graph);
+        }
+        Solution {
+            score: self.score,
+            spawn: graph.ports[self.start as usize],
+            paths,
         }
     }
 }
@@ -355,7 +373,7 @@ impl Colony {
             debug!("  best global score: {best}", best = best_ant.score);
         }
         let best_ant = self.global_best.as_ref().expect("No solution found...?");
-        Solution::from_ant(best_ant, &self.graph)
+        best_ant.to_solution(&self.graph)
     }
 
     fn run_iteration(&mut self) {
@@ -427,7 +445,7 @@ impl Colony {
     fn construct_solution(&mut self) -> Ant {
         let mut ant = Ant::new();
         let start = self.rng.gen_range(0..self.graph.ports.len());
-        ant.reset(start as VertexId, self.graph.start_tick, 0);
+        ant.reset(start as VertexId, self.graph.start_tick, &self.graph);
         while let Some(to) = self.sample_option(&ant) {
             // Local trail update
             let pheromone_add = self.hyperparams.local_evaporation_rate
@@ -465,25 +483,6 @@ impl Colony {
             self.trails[from as usize].add(*to, pheromone_add);
             // TODO: also update other direction?
             from = *to;
-        }
-    }
-}
-
-impl Solution {
-    pub fn from_ant(ant: &Ant, graph: &Graph) -> Self {
-        let mut repeat_ant = Ant::new();
-        repeat_ant.reset(ant.start, graph.start_tick, 0);
-        let mut paths = Vec::new();
-        for to in &ant.path {
-            let path = graph.path(graph.tick_offset(repeat_ant.tick),
-                                  repeat_ant.current, *to);
-            paths.push(path.clone());
-            repeat_ant.visit(*to, graph);
-        }
-        Solution {
-            score: ant.score,
-            spawn: graph.ports[ant.start as usize],
-            paths,
         }
     }
 }

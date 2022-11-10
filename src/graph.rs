@@ -94,6 +94,17 @@ impl Graph {
                     targets.remove(&all_ports[source_idx]);
                     let all_offsets_paths = pathfinder.paths_to_all_targets_by_offset(
                         &all_ports[source_idx], &targets, tick);
+                    // Verify individual paths -- for debugging purposes only.
+                    // for target in &targets {
+                    //     for offset in 0..TICK_OFFSETS {
+                    //         let port = all_ports[source_idx];
+                    //         let dist = pathfinder.distance(&port, target, tick + (offset as u16));
+                    //         let path = &all_offsets_paths.get(&target).unwrap()[offset];
+                    //         assert!(dist.unwrap() == path.cost,
+                    //                 "from {:?} to {:?} get direct cost of {}, but computed {}",
+                    //                 port, target, dist.unwrap(), path.cost);
+                    //     }
+                    // }
                     tx.send((source_idx, all_offsets_paths)).unwrap();
                 }
             }));
@@ -111,11 +122,6 @@ impl Graph {
                     for (offset, path) in offset_paths.iter().enumerate() {
                         assert!(path.cost < 256, "Path cost too high for u8.");
                         paths[offset][source_idx][target_idx] = path.clone();
-                        // Verify individual paths -- for debugging purposes only.
-                        // let dist = pathfinder.distance(port, target, tick + (offset as u16));
-                        // assert!(dist.unwrap() == path.cost,
-                        //         "from {:?} to {:?} get direct cost of {}, but computed {}",
-                        //         port, target, dist.unwrap(), path.cost);
                     }
                     let all_costs: [Cost; TICK_OFFSETS] = array_init::array_init(
                         |t| offset_paths[t].cost as Cost);
@@ -156,5 +162,9 @@ impl Graph {
     #[inline]
     pub fn tick_offset(&self, tick: u16) -> u8 {
         (tick % (TICK_OFFSETS as u16)) as u8
+    }
+
+    pub fn vertex_id(&self, pos: &Pos) -> VertexId {
+        self.ports.iter().position(|&p| p == *pos).unwrap() as VertexId
     }
 }

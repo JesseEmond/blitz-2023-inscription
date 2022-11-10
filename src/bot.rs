@@ -1,4 +1,7 @@
 // TODOs
+// - Automatically update access_token?
+// - Applying linear programming approaches in our setup?
+//   https://github.com/ztlpn/minilp/blob/master/examples/tsp.rs
 // - implement "slow" pathfinding
 // - implement "slow" held-karp
 // - write-up outline
@@ -15,7 +18,8 @@ use crate::game_interface::{Action, GameTick};
 use crate::graph::{Graph};
 use crate::micro_ai::{Micro, State};
 use crate::macro_ai::{Macro};
-use crate::solvers::{Solver};
+use crate::pathfinding::{Pos};
+use crate::solvers::{Solver, verify_solution};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -57,6 +61,7 @@ impl Bot {
         info!("Graph was built in {:?}", graph_start.elapsed());
 
         let solution = self.solver.solve(&graph).expect("no solution found");
+        verify_solution(&graph, &solution);
         self.ai_macro.init(&graph, solution);
 
         info!("Planning took {:?}", planning_start.elapsed());
@@ -67,10 +72,15 @@ impl Bot {
     /// This is where the magic happens, it's random but I bet you can do better ;)
     pub fn get_next_move(&mut self, game_tick: Arc<GameTick>) -> Result<Action, Error> {
         let start = Instant::now();
+        let current = if let Some(pos) = game_tick.current_location {
+              Some(Pos::from_position(&pos))
+          } else {
+              None
+          };
         info!("Tick {current}/{total}, pos: {pos:?}",
               current = game_tick.current_tick,
               total = game_tick.total_ticks,
-              pos = game_tick.current_location);
+              pos = current);
 
         if game_tick.current_tick == 0 {
             self.init(game_tick.clone());

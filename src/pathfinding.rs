@@ -1,7 +1,9 @@
 use arrayvec::ArrayVec;
-use rustc_hash::{FxHashMap, FxHashSet};
-use std::iter;
+use log::{info};
 use priority_queue::PriorityQueue;
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::cmp::Reverse;
+use std::iter;
 
 use crate::challenge_consts::{HEIGHT, TICK_OFFSETS, WIDTH};
 use crate::game_interface::{Map, Position};
@@ -24,8 +26,8 @@ impl Pos {
 }
 
 fn chebyshev_distance(a: &Pos, b: &Pos) -> u16 {
-    u16::max((a.x as i32 - b.x as i32).abs() as u16,
-             (a.y as i32 - b.y as i32).abs() as u16)
+    u16::max(((a.x as i32) - (b.x as i32)).abs() as u16,
+             ((a.y as i32) - (b.y as i32)).abs() as u16)
 }
 
 type Neighbors = ArrayVec<Pos, 8>;
@@ -118,7 +120,7 @@ impl Grid {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Path {
     pub steps: Vec<Pos>,
     pub cost: u16,
@@ -141,6 +143,15 @@ impl State {
     }
     pub fn wait(&self) -> u8 {
         (self.0 & 0xff) as u8
+    }
+}
+
+impl std::fmt::Debug for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("State")
+            .field("position", &self.position())
+            .field("wait", &self.wait())
+            .finish()
     }
 }
 
@@ -202,10 +213,9 @@ impl Pathfinder {
         let mut first_goal: Option<Pos> = None;
 
         // TODO: worth using a different data structure?
-        // NOTE: Higher priority pops first.
-        let mut frontier: PriorityQueue<State, i32> = PriorityQueue::new();
+        let mut frontier: PriorityQueue<State, Reverse<u16>> = PriorityQueue::new();
         let start_state = State::new(*start, 0);
-        frontier.push(start_state, 0);
+        frontier.push(start_state, Reverse(0));
         self.came_from.insert(start_state, start_state);
         self.cost_so_far.insert(start_state, 0);
         let mut early_explore: Option<(State, u16)> = None;
@@ -216,10 +226,9 @@ impl Pathfinder {
             let (current, current_f_score) = match early_explore {
                 Some((option, score)) => (option, score),
                 None => {
-                    let (option, priority) = frontier.pop().unwrap();
-                    let f_score = (-priority) as u16;
-                    (option, f_score)
-                },
+                    let (current, priority) = frontier.pop().unwrap();
+                    (current, priority.0)
+                }
             };
             early_explore = None;
             let cost = *self.cost_so_far.get(&current).unwrap();
@@ -227,18 +236,29 @@ impl Pathfinder {
 
             if targets.contains(&current.position()) {
                 targets.remove(&current.position());
-                first_goal = Some(current.position());
-                if stop_on_first {
+                if first_goal.is_none() {
+                    first_goal = Some(current.position());
+                }
+                if stop_on_first || targets.is_empty() {
                     break;
                 }
-            }
-            if targets.is_empty() {
-                break;
+                // Updating frontier priorities, since our heuristic depends on
+                // the list of remaining goals and we just removed one.
+                // TODO: Faster to do h=0 (~Dijkstra) instead of handling this?
+                // Insert current (goal we just found) again, since its f-score
+                // also likely changed.
+                frontier.push(current, Reverse(0));
+                for (node, priority) in frontier.iter_mut() {
+                    let g = self.cost_so_far.get(node).unwrap();
+                    let h = heuristic(&node.position(), &targets);
+                    let f = g + h;
+                    *priority = Reverse(f);
+                }
+                continue;  // Grab new top frontier item, might not be 'current'
             }
 
-            let tick_offset = current_tick % (TICK_OFFSETS as u16);
-            let neighbors = self.grid.neighbors[tick_offset as usize][current.position().y as usize][current.position().x as usize]
-                .iter().map(|&n| State::new(n, 0));
+            let neighbors = self.grid.neighbors(current.position(), current_tick)
+                .map(|n| State::new(n, 0));
             let wait_here = iter::once(
                 State::new(current.position(), current.wait() + 1));
             // We must wait if we're stuck on ground
@@ -264,13 +284,11 @@ impl Pathfinder {
                     if f <= current_f_score && better_early_explore {
                         if let Some((option, score)) = early_explore {
                             // No longer the best, needs to go in the frontier
-                            let priority = -(score as i32);
-                            frontier.push(option, priority);
+                            frontier.push(option, Reverse(score));
                         }
                         early_explore = Some((next, f));
                     } else {
-                        let priority = -(f as i32);
-                        frontier.push(next, priority);
+                        frontier.push(next, Reverse(f));
                     }
                 }
             }
@@ -339,6 +357,7 @@ impl Pathfinder {
             let tick = tick + (offset as u16);
             let all_paths = self.paths_to_all_targets(start, targets, tick);
             for (target, path) in &all_paths {
+                self._verify_path(&path, tick);
                 assert!(out.contains_key(target) || offset == 0);
                 out.entry(*target)
                     .and_modify(|paths: &mut Vec<Path>| paths.push(path.clone()))
@@ -347,5 +366,25 @@ impl Pathfinder {
         }
         assert!(out.values().all(|v| v.len() == TICK_OFFSETS));
         out
+    }
+
+    // Used for debugging purposes.
+    pub fn _verify_path(&self, path: &Path, tick: u16) {
+        let start = tick;
+        let mut tick = tick;
+        for i in 1..path.steps.len() {
+            let from = path.steps[i - 1];
+            let to = path.steps[i];
+            if from != to {  // waiting on land is fine
+                assert!(self.grid.navigable(&from, tick),
+                        "Sailing from ground {:?}->{:?}", from, to);
+                if !self.grid.navigable(&to, tick) {
+                    info!("This was for path {:?} to {:?}, tick {}", path.steps[0], path.goal, start);
+                }
+                assert!(self.grid.navigable(&to, tick),
+                        "Sailing to ground {:?}->{:?}", from, to);
+            }
+            tick += 1;
+        }
     }
 }

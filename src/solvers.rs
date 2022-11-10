@@ -19,6 +19,28 @@ use crate::challenge::{Solution, eval_score};
 use crate::graph::{Graph, VertexId};
 use crate::held_karp::{held_karp};
 
+pub fn verify_solution(graph: &Graph, solution: &Solution) {
+    let spawn = graph.vertex_id(&solution.spawn);
+    let mut tick = graph.start_tick + 1;  // +1 to dock start
+    let mut current = spawn;
+    for path in &solution.paths {
+        let next = graph.vertex_id(&path.goal);
+        let real_path = graph.path(graph.tick_offset(tick), current, next);
+        assert!(*path == *real_path,
+                "At tick {}, expected path {:?} to {:?}, got {:?}",
+                tick, real_path, real_path.goal, path);
+        let dock_tick = if next == spawn { 0 } else { 1 };
+        tick += (path.cost as u16) + dock_tick;
+        current = next;
+    }
+    let looped = current == spawn;
+    let visits = solution.paths.len() + 1;
+    let score = eval_score(visits as u32, tick, looped);
+    assert!(solution.score == score,
+            "{} visits, {} ticks, expected score of {}, got {}",
+            visits, tick, score, solution.score);
+}
+
 pub trait Solver {
     // Name to display for this solver.
     fn name(&self) -> &str;

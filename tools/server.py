@@ -237,10 +237,11 @@ def start_game():
         json.dump(hyperparams.to_dict(), f)
   env = os.environ.copy()
   env['RUST_LOG'] = 'warn'
-  client_process = subprocess.Popen(['../target/release/application',
-                                     '--solver', 'ant-colony-optimization',
-                                     '--aco-hyperparams-file',
-                                     '/tmp/hyperparams.json'], env=env)
+  args = ['../target/release/application',
+          '--solver', 'ant-colony-optimization']
+  if is_sweep:
+    args += ['--aco-hyperparams-file', '/tmp/hyperparams.json']
+  client_process = subprocess.Popen(args, env=env)
 
 
 def new_suggestions():
