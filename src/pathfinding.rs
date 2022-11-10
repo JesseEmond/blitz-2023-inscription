@@ -257,8 +257,9 @@ impl Pathfinder {
                 continue;  // Grab new top frontier item, might not be 'current'
             }
 
-            let neighbors = self.grid.neighbors(current.position(), current_tick)
-                .map(|n| State::new(n, 0));
+            let tick_offset = current_tick % (TICK_OFFSETS as u16);
+            let neighbors = self.grid.neighbors[tick_offset as usize][current.position().y as usize][current.position().x as usize]
+                .iter().map(|&n| State::new(n, 0));
             let wait_here = iter::once(
                 State::new(current.position(), current.wait() + 1));
             // We must wait if we're stuck on ground
