@@ -6,7 +6,7 @@ import requests
 import sys
 import time
 import zipfile
-from typing import Mapping, Optional, Tuple
+from typing import List, Mapping, Optional, Tuple
 
 from game_message import Map, Position, Tick, TideLevels
 
@@ -102,20 +102,25 @@ def get_active_task_states() -> Mapping[int, str]:
   return {task['id']: task['state'] for task in data['data']['blitz_tasks']}
 
 
-def wait_for_game(game_id: int):
+def wait_for_games(game_ids: List[int]) -> List[int]:
+  """Returns the games that are completed."""
   SLEEP_TIME = 5
   started = False
-  print(f'  waiting for game #{game_id} to start', end='', flush=True)
-  while game_id not in get_active_task_states():
+  print(f'  waiting for any of {game_ids} to start', end='', flush=True)
+  while not any(game_id in get_active_task_states() for game_id in game_ids):
     print('.', end='', flush=True)
     time.sleep(SLEEP_TIME)
   print('  Started!')
-  print(f'  waiting for game #{game_id} to complete', end='', flush=True)
-  while get_active_task_states()[game_id] != 'completed':
+  print(f'  waiting for any of game {game_ids} to complete', end='', flush=True)
+  states = get_active_task_states()
+  while not any(states[game_id] == 'completed' for game_id in game_ids):
     print('.', end='', flush=True)
     time.sleep(SLEEP_TIME)
-  print('  Completed!')
-
+    states = get_active_task_states()
+  completed = [game_id for game_id in game_ids
+               if states[game_id] == 'completed']
+  print(f'  Completed: {completed}')
+  return completed
 
 
 def read_game_logs(game_id: int) -> str:
@@ -207,25 +212,30 @@ def save_game(game: Tick, filename: str):
     json.dump(game.to_dict(), f)
 
 
-i = 0
-while i < num_games:
-  print(f'Starting game #{i+1}...')
-  game_id = start_game()
-  wait_for_game(game_id)
-  print('  downloading game logs...')
-  logs = read_game_logs(game_id)
-  game = extract_game(logs)
-  if not game:
-    print(f'[!ERROR!] Failed to real logs for game {game_id}. Skipping.')
-    continue
-  print(f'  this was a {len(game.map.ports)} ports game')
-  if len(game.map.ports) < 20:
-    print('  skipping!')
-    continue
-  print('  noteworthy:')
-  for line in extract_interesting_lines(logs):
-    print(f'  - {line}')
-  filename = f'{output_folder}/{game_id}.json'
-  print(f'  saving to {filename}...')
-  save_game(game, filename)
-  i += 1
+games = 0
+active_games = []
+MAX_ACTIVE_GAMES = 2
+while games < num_games:
+  for i in range(len(active_games), MAX_ACTIVE_GAMES):
+    print(f'Starting game #{games+i+1}...')
+    game_id = start_game()
+    active_games.append(game_id)
+  completed = wait_for_games(active_games)
+  for game_id in completed:
+    print('  downloading game logs...')
+    logs = read_game_logs(game_id)
+    game = extract_game(logs)
+    if not game:
+      print(f'[!ERROR!] Failed to real logs for game {game_id}. Skipping.')
+      continue
+    print(f'  this was a {len(game.map.ports)} ports game')
+    if len(game.map.ports) < 20:
+      print('  skipping!')
+      continue
+    print('  noteworthy:')
+    for line in extract_interesting_lines(logs):
+      print(f'  - {line}')
+    filename = f'{output_folder}/{game_id}.json'
+    print(f'  saving to {filename}...')
+    save_game(game, filename)
+    games += 1
