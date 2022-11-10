@@ -222,6 +222,7 @@ while games < num_games:
     active_games.append(game_id)
   completed = wait_for_games(active_games)
   for game_id in completed:
+    active_games.remove(game_id)
     print('  downloading game logs...')
     logs = read_game_logs(game_id)
     game = extract_game(logs)
