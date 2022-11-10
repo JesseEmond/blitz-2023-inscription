@@ -22,7 +22,7 @@ use blitz_bot::solvers::{OptimalSolver, Solver};
 // Thresholds for observed games. Games that don't pass these thresholds will be
 // deleted.
 const MIN_PORTS_DELETE_THRESHOLD: usize = 20;
-const MIN_SCORE_DELETE_THRESHOLD: i32 = 3500;
+const MIN_SCORE_DELETE_THRESHOLD: i32 = 3600;
 
 
 #[derive(Debug, Clone)]
