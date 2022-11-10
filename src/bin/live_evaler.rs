@@ -19,6 +19,12 @@ use blitz_bot::game_interface::{GameTick};
 use blitz_bot::graph::{Graph};
 use blitz_bot::solvers::{OptimalSolver, Solver};
 
+// Thresholds for observed games. Games that don't pass these thresholds will be
+// deleted.
+const MIN_PORTS_DELETE_THRESHOLD: usize = 20;
+const MIN_SCORE_DELETE_THRESHOLD: i32 = 3500;
+
+
 #[derive(Debug, Clone)]
 struct SavedGame {
     id: u32,
@@ -56,12 +62,14 @@ fn evaluate_game(saved_game: &SavedGame) -> Result<i32, GameEvalError> {
     let tick: GameTick = serde_json::from_value(parsed)?;
     let tick = Arc::new(tick);
 
-    if tick.map.ports.len() >= 20 {
+    if tick.map.ports.len() >= MIN_PORTS_DELETE_THRESHOLD {
         let graph: Arc<Graph> = Arc::new(Graph::new(&tick));
         let solution = OptimalSolver{}.solve(&graph)
             .expect("no solution possible on game");
         Ok(solution.score)
     } else {
+        assert!(0 < MIN_SCORE_DELETE_THRESHOLD,
+                "Increase score threshold to delete low-ports games");
         Ok(0)
     }
 }
@@ -82,13 +90,18 @@ fn main() {
                 let score = evaluate_game(&game);
                 match score {
                     Ok(score) => {
-                        if score > 0 {
+                        if score > MIN_SCORE_DELETE_THRESHOLD {
                             println!("  score: {} points", score);
                             scores.push(score);
+                            seen_games.insert(game.id);
                         } else {
-                            println!("  less than 20 ports. Ignoring.");
+                            println!(
+                                "  score: {} points, below threshold, deleting.",
+                                score);
+                            if std::fs::remove_file(game.path).is_err() {
+                                println!("  Failed to delete game.");
+                            }
                         }
-                        seen_games.insert(game.id);
                     },
                     Err(err) => println!("  error: {err:?} Will retry."),
                 };

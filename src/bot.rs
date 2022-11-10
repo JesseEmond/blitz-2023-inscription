@@ -1,6 +1,4 @@
 // TODOs
-// - Change live_eval to remove games under a threshold scores, to clean up
-//   space
 // - Applying linear programming approaches in our setup?
 //   https://github.com/ztlpn/minilp/blob/master/examples/tsp.rs
 // - implement "slow" pathfinding
