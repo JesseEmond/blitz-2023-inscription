@@ -5,3 +5,4 @@ matplotlib
 requests
 google-vizier
 tabulate
+browser-cookie3

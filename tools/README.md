@@ -35,7 +35,9 @@ with high score potential) and collect games for offline evals.
 
 `access_token.priv` must exist and contain your access token, which you can
 obtain by looking at HTTP Headers when logged in on the Blitz website (e.g. see
-Network tab in Chrome).
+Network tab in Chrome). In case of auth failure, the script will try to refresh
+your access token by initiating the OAuth2 login flow with your local firefox
+cookies.
 
 Example usage: `python collect_games.py 10 ../games/`
 

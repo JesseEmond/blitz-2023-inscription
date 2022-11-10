@@ -1,3 +1,4 @@
+import browser_cookie3
 import io
 import json
 import re
@@ -20,9 +21,31 @@ with open('access_token.priv', 'r') as f:
 MY_TEAM_ID = 58
 
 
+def refresh_access_token():
+  global access_token
+  firefox_cookies = browser_cookie3.firefox(domain_name='.google.com')
+  print('Trying to refresh access token...')
+  r = requests.get('https://api.blitz.codes/login/google', allow_redirects=False)
+  assert r.status_code == 302, f'Expected a redirect: {r} {r.status_code}'
+  google_url = r.headers['Location']
+  r = requests.get(google_url, cookies=firefox_cookies, allow_redirects=False)
+  assert r.status_code == 302, f'Expected a redirect: {r} {r.status_code}'
+  oauth_callback_url = r.headers['Location']
+  r = requests.get(oauth_callback_url, allow_redirects=False)
+  assert r.status_code == 302, f'Expected a redirect: {r} {r.status_code}'
+  assert 'access_token' in r.cookies, f'Expected access_token in cookies: {r.cookies}'
+  access_token = r.cookies['access_token']
+  with open('access_token.priv', 'w') as f:
+    f.write(access_token)
+  print('Token refreshed!')
+
+
 def attempt_request(make_req_fn):
   r = make_req_fn()
-  assert r.status_code != 401, "Update your access_token!"
+  if r.status_code == 401:
+    refresh_access_token()
+    r = make_req_fn()
+  assert r.status_code != 401, "Access token refresh failed."
   if r.status_code == 429:  # HTTP Too Many Requests
     print(f'Oops! We are being throttled: {r.headers}')
     retry = r.headers.get('Retry-After')
