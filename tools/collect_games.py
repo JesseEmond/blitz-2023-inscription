@@ -55,10 +55,16 @@ def attempt_request(make_req_fn):
     print(f'Waiting for {retry} seconds...')
     time.sleep(int(retry))
     r = make_req_fn()
+    if r.status_code == 401:
+      refresh_access_token()
+      r = make_req_fn()
   if not r.ok:
     print(f'Oops. Unexpected error...? Waiting 10 mins and retrying.')
     time.sleep(10 * 60)
     r = make_req_fn()
+    if r.status_code == 401:
+      refresh_access_token()
+      r = make_req_fn()
   assert r.ok, (r.status_code, r.headers, r.content, r)
   return r
 
