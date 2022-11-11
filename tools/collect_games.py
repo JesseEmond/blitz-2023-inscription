@@ -113,12 +113,12 @@ def wait_for_games(game_ids: List[int]) -> List[int]:
   print('  Started!')
   print(f'  waiting for any of game {game_ids} to complete', end='', flush=True)
   states = get_active_task_states()
-  while not any(states[game_id] == 'completed' for game_id in game_ids):
+  while not any(states.get(game_id) == 'completed' for game_id in game_ids):
     print('.', end='', flush=True)
     time.sleep(SLEEP_TIME)
     states = get_active_task_states()
   completed = [game_id for game_id in game_ids
-               if states[game_id] == 'completed']
+               if states.get(game_id) == 'completed']
   print(f'  Completed: {completed}')
   return completed
 
