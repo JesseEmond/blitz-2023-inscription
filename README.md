@@ -12,17 +12,100 @@ TODO results
 
 ## Write-Up
 
-TODO write-up
+The following is a description of the challenge and how I approached it. For
+code structure documentation, jump to the end.
 
 ### Challenge
 
-TODO description, visual example
+For this challenge, we are a salesperson that controls a boat and we want to
+visit as many unique ports as possible, as fast as possible, to get the highest
+score.
 
-TODO ports distribution
+This is a tick-based game, where every tick our bot receives information about
+the map and must send the action that our boat will take. We are told we have
+1 second maximum per tick to return our action.
 
-TODO luck factor, score distribution for 20 ports
+The **map** related information contains the following:
 
-TODO example map that gives high score vs low score
+- Dimensions: width/height for the tiles of the map;
+- Topology: each tile has a given height and, for a given tick, we can only
+  navigate _to or from_ a tile if it is _below_ the water (see tide);
+- Tide schedule: tells us how high the water currently is for the current tick,
+  as well as what it will be like in the next few ticks;
+- Ports: the list of port locations that we can visit to score points.
+
+In practice, we see the following characteristics:
+- Maps are 50x50 or 60x60, randomly generated;
+- Tide schedules are of length 10;
+- Tide schedules **cycle**, meaning that we have perfect game information on the
+  first tick;
+- We see a mix of 14, 16, 18, or 20 ports, with randomness;
+- Games are max 400 ticks.
+
+Note that this means that the navigable tiles are dynamic based on the tide and
+that shortest paths can depend on the offset within the tide schedule.
+
+We must give our **action**, out of the following:
+- Sail: move in any of the 8 directions (up/down/left/right + diagonals), with
+  diagonals having the _same cost_ as horizontal/vertical movements;
+- Spawn: only do this once at the start;
+- Dock: must be done after reaching a port to count it as visited;
+- Anchor: wait and do nothing.
+
+Visually, the game looks something like this:
+
+TODO include gif
+
+The game ends if we dock the first port again (do a full tour) or if 400 ticks
+are reached. Then, the score is computed based on the following formula:
+
+```
+bonus = 2 if ports_visited[0] == ports_visited[-1] else 1
+base = len(ports_visited) * 125 - 3 * total_ticks
+score = base * bonus
+```
+
+In simpler terms: visit many ports quickly, try to loop back home.
+
+The example above visited 19 ports in 274 ticks, doing a full tour. This gave a
+score of 3106 points:
+
+```
+bonus = 2  # full loop
+base = 19 * 125 - 3 * 274 = 1553
+score = 1553 * 2 = 3106
+```
+
+Based on the scoring formula, we see that:
+- Looping is almost always desired (doubles score + ends game early). Hard to
+  imagine cases where visiting `n` ports and forcing 400 ticks total without a
+  loop would be better than looping back after `n/2` ports and being able to end
+  early;
+- Higher number of ports can score us more points. While theoretically games of
+  lower ports can match games of higher ones (e.g. 3896 pts can be achieved with
+  a 20 ports loop in 184 ticks, the same can be obtained if it would be possible
+  to get a 17 ports map, in a 17 ports loop in 59 ticks -- which would be an
+  extremely lucky & packed map), our best bet is with a 20-ports game.
+
+The randomness of some of the parameters (map generation, tide, # ports) leads
+to the optimal possible score on a game depending on luck, and can vary quite a
+bit between games.
+
+Here are two games with 20 ports that leads to very different optimal scores
+(the optimal solver will be described later):
+
+TODO 2 map gifs of same len side-by-side, with validated (offline) optimal scores
+
+To give an idea of the range, here is the distribution of 100 optimal scores for
+20-port games assigned to us by the server:
+
+TODO distribution
+
+Note that this is showing the optimal score, too (best case scenario), and that
+we have a 1-second time limit to reply to each tick, which might not allow us to
+run an optimal solver. However, this does show that there's a good amount of
+variability and if we want to get a high score on the leaderboard, we'll have to
+roll the dice and rerun games for a chance at a high score.
 
 ### Greedy Solver
 
