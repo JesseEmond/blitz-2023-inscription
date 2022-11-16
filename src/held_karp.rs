@@ -26,7 +26,9 @@ const NUM_MASKS: usize = 1 << MAX_MASK_ITEMS;
 // memory. This is the size of that flattened array.
 const FLAT_SIZE: usize = (MAX_PORTS - 1) * NUM_MASKS;
 
-type Set = [VertexId; MAX_PORTS];
+// Note: use array instead of ArrayVec since it can be okay to access past the
+// size on last iterations of set combinations.
+type SetElements = [VertexId; MAX_PORTS];
 type Cost = u16;
 
 #[derive(Clone)]
@@ -84,53 +86,173 @@ struct HeldKarp {
     // we visited to end up to each possible 'e' cities. Also flattened.
     p: Vec<VertexId>,
 
-    // Precomputed binomial[m][k] gives m-choose-k.
-    // TODO: refactor to Binomial helper
-    binomial: [[usize; MAX_PORTS]; MAX_PORTS],
-    // For a given subset size 's', the start index in the array 'v' for that
-    // subset's data.
-    b: [usize; MAX_PORTS],
+    /// Helper to manipulate an array of combinations, ordered by subset size.
+    flat_subsets_helper: FlatSubsetsHelper,
 }
 
-// TODO: refactor set handling to custom struct?
-fn first_set(set: &mut Set, s: usize) {
-    for i in 0..s {
-        set[i] = i as VertexId;
+/// Helper for precomputed values for dealing with a precomputed flat array of
+/// combinations, ordered by subset sizes.
+struct FlatSubsetsHelper {
+    /// Precomputed binomial values n-choose-k.
+    pub binomial: Binomial,
+    /// For a subset size, the start index in a flat array for the subset data.
+    subset_starts: [usize; MAX_PORTS],
+}
+
+/// Precomputed binomial values (n-choose-k).
+struct Binomial {
+    /// binomials[n][k] gives the value for n-choose-k.
+    binomials: [[usize; MAX_PORTS]; MAX_PORTS],
+}
+
+/// Helper to hold a current set of vertices ('S' or 'S \ {k}' in Held-Karp).
+struct Combination {
+    pub elements: SetElements,
+    pub size: usize,
+    /// In a sequential array of all possible subsets, base index for this set.
+    /// Element 0 is at 'index_base', element 1 at 'index_base+1', ...
+    pub index_base: usize,
+}
+
+impl FlatSubsetsHelper {
+    fn new() -> Self {
+        let binomial = Binomial::new();
+        let mut subset_starts = [0usize; MAX_PORTS];
+        for i in 1..MAX_PORTS {
+            let prev_size = (i-1) * binomial.n_choose_k(MAX_MASK_ITEMS, i-1);
+            subset_starts[i] = subset_starts[i-1] + prev_size;
+        }
+        FlatSubsetsHelper { binomial, subset_starts }
+    }
+
+    /// Index of the start where a given 'set' would be in a flattened array.
+    /// The elements of 'set' will be there, sequentially.
+    fn flat_index(&self, set: &SetElements, size: usize) -> usize {
+        let mut loc = 0usize;
+        for i in 0..size {
+            loc += self.binomial.n_choose_k(set[i] as usize, i+1);
+        }
+        self.subset_starts[size] + size * loc
+    }
+
+    /// Start index where combinations of a given size would be in a flat array.
+    /// The elements of combinations of that size will be there, sequentially.
+    fn flat_index_region(&self, combination_size: usize) -> usize {
+        self.subset_starts[combination_size]
     }
 }
 
-fn next_set(set: &mut Set, s: usize) {
-    let mut i = 0;
-    while i < s - 1 && set[i] + 1 == set[i + 1] {
-        set[i] = i as VertexId;
-        i += 1;
+impl Binomial {
+    fn new() -> Self {
+        let mut binomial =  [[0usize; MAX_PORTS]; MAX_PORTS];
+        for n in 0..MAX_PORTS {
+            binomial[n][0] = 1;
+            binomial[n][n] = 1;
+        }
+        // Use recurrence relationship
+        // n-choose-k = (n-1)-choose-(k-1) + (n-1)-choose-k
+        for n in 1..MAX_PORTS {
+            for k in 1..n {
+                binomial[n][k] = binomial[n-1][k-1] + binomial[n-1][k];
+            }
+        }
+        Binomial { binomials: binomial }
     }
-    set[i] += 1;
+
+    fn n_choose_k(&self, n: usize, k: usize) -> usize {
+        self.binomials[n][k]
+    }
+}
+
+impl Combination {
+    /// Returns the first set combination for a given subset size.
+    fn first(size: usize, flat_subsets_helper: &FlatSubsetsHelper) -> Self {
+        let elements = array_init::array_init(|i| i as VertexId);
+        let index_base = flat_subsets_helper.flat_index_region(size);
+        Combination { elements, index_base, size }
+    }
+
+    /// Creates a set 'S' with one less element (initially without 0th elem).
+    /// Use this in conjunction with 'next_minus_k'.
+    fn set_minus_k(set: &Combination,
+                   flat_subsets_helper: &FlatSubsetsHelper) -> Self {
+        let mut elements = [0; MAX_PORTS];
+        for i in 1..set.size {
+            elements[i - 1] = set.elements[i];
+        }
+        let size = set.size - 1;
+        let index_base = flat_subsets_helper.flat_index(&elements, size);
+        Combination { elements, index_base, size }
+    }
+
+    /// Direct construction. used for debugging purposes.
+    fn _new(elements: &SetElements, size: usize,
+            flat_subsets_helper: &FlatSubsetsHelper) -> Self {
+        let index_base = flat_subsets_helper.flat_index(elements, size);
+        Combination { elements: elements.clone(), index_base, size }
+    }
+
+    /// Returns the next combination of the same size.
+    fn next(&mut self, flat_subsets_helper: &FlatSubsetsHelper) {
+        let mut i = 0;
+        while i < self.size - 1 && self.elements[i] + 1 == self.elements[i + 1] {
+            self.elements[i] = i as VertexId;
+            i += 1;
+        }
+        self.elements[i] += 1;
+        self.index_base = flat_subsets_helper.flat_index(
+            &self.elements, self.size);
+    }
+
+    /// Go to the next version of set 'S' with its 'k'th element missing.
+    /// Doing incremental to move to the next set
+    fn next_minus_k(&mut self, k: usize, kth_elem: VertexId,
+                    flat_subsets_helper: &FlatSubsetsHelper) {
+        // Note that the 'minus-k' version of S starts with {1, ..., s-1}, so we
+        // go to the next one by setting the kth element of 'S\{k}' to be S[k],
+        // which gives us the next k being missing (e.g. for k=0, becomes
+        // {0, 2, ..., s-1}).
+        let s = self.size;
+        // Do flat index computations in-place on only the edited element as an
+        // optimization.
+        self.index_base -= s * flat_subsets_helper.binomial.n_choose_k(
+            self.elements[k] as usize, k+1);
+        self.elements[k] = kth_elem;
+        self.index_base += s * flat_subsets_helper.binomial.n_choose_k(
+            self.elements[k] as usize, k+1);
+    }
+
+    /// If we are past the final combination of our current size.
+    fn is_done(&self, max_elements: usize) -> bool {
+        let last = self.elements[self.size - 1] as usize;
+        last >= max_elements
+    }
+
+    /// Return index in a flattened array for the requested set element.
+    fn element_index(&self, set_idx: usize) -> usize {
+        self.index_base + set_idx
+    }
+
+    fn remove(&mut self, idx: usize, flat_subsets_helper: &FlatSubsetsHelper) {
+        for i in (idx+1)..self.size {
+            self.elements[i-1] = self.elements[i];
+        }
+        self.size -= 1;
+        self.index_base = flat_subsets_helper.flat_index(
+            &self.elements, self.size);
+    }
+
+    fn find_index(&self, vertex: VertexId) -> Option<usize> {
+        self.elements.iter().position(|&v| v == vertex)
+    }
 }
 
 impl HeldKarp {
     pub fn new() -> Self {
-        let mut binomial =  [[0usize; MAX_PORTS]; MAX_PORTS];
-        for m in 0..MAX_PORTS {
-            binomial[m][0] = 1;
-            binomial[m][m] = 1;
-        }
-        // Use recurrence relationship
-        // m-choose-k = (m-1)-choose-(k-1) + (m-1)-choose-k
-        for m in 1..MAX_PORTS {
-            for k in 1..m {
-                binomial[m][k] = binomial[m-1][k-1] + binomial[m-1][k];
-            }
-        }
-        let mut b = [0usize; MAX_PORTS];
-        for i in 1..MAX_PORTS {
-            b[i] = b[i-1] + (i-1) * (binomial[MAX_MASK_ITEMS][i-1]);
-        }
         HeldKarp {
             g: vec![Cost::MAX; FLAT_SIZE],
             p: vec![VertexId::MAX; FLAT_SIZE],
-            binomial,
-            b,
+            flat_subsets_helper: FlatSubsetsHelper::new(),
         }
     }
 
@@ -146,75 +268,68 @@ impl HeldKarp {
         // VertexId.
         let untranslated: [VertexId; MAX_PORTS] = array_init::array_init(
             |v: usize| self.untranslate(start, v as VertexId));
-        let mut set: Set = [0; MAX_PORTS];
-        first_set(&mut set, 1);
+
+        let max_set_items = graph.ports.len() - 1;
 
         // Initialize for |S|=1 (with S = {k})
-        while (set[0] as usize) < graph.ports.len() - 1 {
-            let k = set[0];
+        let mut set = Combination::first(/*size=*/1, &self.flat_subsets_helper);
+        while !set.is_done(max_set_items) {
+            let k = *set.elements.first().unwrap();
             // Start at +1 to dock spawn.
             // Initial cost is the start tick, plus cost from spawn to 'k'.
             let cost = graph.cost(graph.tick_offset(start_tick), start,
                                   untranslated[k as usize]);
-            let idx = self.flat_index_region(&set, 1);
             // +1 to dock 'k'
-            self.g[idx] = start_tick + (cost as Cost) + 1;
-            self.p[idx] = k;
-            next_set(&mut set, 1);
+            self.g[set.element_index(0)] = start_tick + (cost as Cost) + 1;
+            self.p[set.element_index(0)] = k;
+            set.next(&self.flat_subsets_helper);
         }
 
         // From |S|=s, deduce S' (|S'| = s+1) g(S', k) by picking the
         // before-last city that minimizes cost, for each k.
-        let max_set_items = graph.ports.len() - 1;
-        // TODO: helper struct to support this
-        let mut set_minus_k = [0; MAX_PORTS];
         for s in 2..=max_set_items {
-            first_set(&mut set, s);
-            while (set[s - 1] as usize) < graph.ports.len() - 1 {
-                let k_index_base = self.flat_index_region(&set, s);
-                let mut m_index_base = self.b[s - 1];
-                for t in 1..s {
-                    set_minus_k[t - 1] = set[t];
-                    m_index_base += (s-1) * self.binomial[set_minus_k[t - 1] as usize][t];
-                }
+            let mut set = Combination::first(s, &self.flat_subsets_helper);
+            while !set.is_done(max_set_items) {
+                let mut set_minus_k = Combination::set_minus_k(
+                    &set, &self.flat_subsets_helper);
                 for k in 0..s {
                     let (min_cost, min_vertex) = (0..(s-1)).map(|m| {
-                        let current_cost = self.g[m_index_base + m];
+                        let current_cost = self.g[set_minus_k.element_index(m)];
                         let m_k_cost = graph.cost(
                             graph.tick_offset(current_cost),
-                            untranslated[set_minus_k[m] as usize],
-                            untranslated[set[k] as usize]);
+                            untranslated[set_minus_k.elements[m] as usize],
+                            untranslated[set.elements[k] as usize]);
                         // + 1 to dock
                         let cost = current_cost + (m_k_cost as Cost) + 1;
-                        (cost, set_minus_k[m])
+                        (cost, set_minus_k.elements[m])
                     }).min_by_key(|&(cost, _)| cost).unwrap();
-                    self.g[k_index_base + k] = min_cost;
-                    self.p[k_index_base + k] = min_vertex;
-                    m_index_base -= (s-1) * self.binomial[set_minus_k[k] as usize][k+1];
-                    set_minus_k[k] = set[k];
-                    m_index_base += (s-1) * self.binomial[set_minus_k[k] as usize][k+1];
+                    self.g[set.element_index(k)] = min_cost;
+                    self.p[set.element_index(k)] = min_vertex;
+                    set_minus_k.next_minus_k(k, set.elements[k],
+                                             &self.flat_subsets_helper);
                 }
-                next_set(&mut set, s);
+                set.next(&self.flat_subsets_helper);
             }
         }
 
-        // Find the best tour by checking paths back to each start.
-        first_set(&mut set, max_set_items);
+        // Find the best tour by checking paths back to the start.
+        let set = Combination::first(max_set_items, &self.flat_subsets_helper);
         let mut total_cost = Cost::MAX;
         let mut last_city: VertexId = VertexId::MAX;
         for k in 0..max_set_items {
-            let idx = self.flat_index_region(&set, max_set_items) + k;
-            let current_cost = self.g[idx];
-            let k_start_cost = graph.cost(graph.tick_offset(current_cost),
-                                          untranslated[set[k] as usize], start);
+            let current_cost = self.g[set.element_index(k)];
+            let k_start_cost = graph.cost(
+                graph.tick_offset(current_cost),
+                untranslated[set.elements[k] as usize],
+                start);
             // Note: no "+ 1" for docking, the last dock tick doesn't count.
             let cost = current_cost + (k_start_cost as Cost);
             if cost < total_cost {
                 total_cost = cost;
-                last_city = set[k];
+                last_city = set.elements[k];
             }
         }
-        let vertices = self.backtrack(start, last_city, &set, max_set_items);
+        let vertices = self.backtrack(start, last_city, max_set_items);
         info!("Starting at port ID {}, cost would be {}, vertices: {vertices:?}",
               start, total_cost);
         Tour { cost: total_cost, vertices }
@@ -222,19 +337,17 @@ impl HeldKarp {
 
     // Backtrack to get vertices for a tour.
     fn backtrack(
-        &self, start: VertexId, last: VertexId, set: &Set, set_size: usize
+        &self, start: VertexId, last: VertexId, set_size: usize
         ) -> Vec<VertexId> {
-        let mut set = set.clone();
+        let mut set = Combination::first(set_size, &self.flat_subsets_helper);
         let mut vertices = Vec::with_capacity(set_size + 2);
         vertices.push(start);
         let mut vertex = last;
-        for s in (1..=set_size).rev() {
+        for _s in (1..=set_size).rev() {
             vertices.push(self.untranslate(start, vertex));
-            let vertex_idx = set.iter().position(|&v| v == vertex).unwrap();
-            vertex = self.p[self.flat_index_region(&set, s) + vertex_idx];
-            for i in vertex_idx..s {
-                set[i] = set[i+1];
-            }
+            let vertex_idx = set.find_index(vertex).unwrap();
+            vertex = self.p[set.element_index(vertex_idx)];
+            set.remove(vertex_idx, &self.flat_subsets_helper);
         }
         vertices.push(start);
         vertices.reverse();
@@ -258,33 +371,29 @@ impl HeldKarp {
         // 150 * 2 pts). 
         let min_ports = ((best_score + 299) / 300) as usize;
 
-        let mut set: Set = [0; MAX_PORTS];
         let min_set_items = min_ports - 1;  // -1 since start is implicit
         let max_set_items = graph.ports.len() - 1; // no need t
         // Note: max_set_items excluded since we already have full_tour.
         for s in min_set_items..max_set_items {
-            first_set(&mut set, s);
-            while (set[s - 1] as usize) < graph.ports.len() - 1 {
-                let k_index_base = self.flat_index_region(&set, s);
+            let mut set = Combination::first(s, &self.flat_subsets_helper);
+            while !set.is_done(max_set_items) {
                 for k in 0..s {
-                    let current_cost = self.g[k_index_base + k];
+                    let current_cost = self.g[set.element_index(k)];
                     let k_start_cost = graph.cost(
                         graph.tick_offset(current_cost),
-                        self.untranslate(start, set[k]), start);
+                        self.untranslate(start, set.elements[k]), start);
                     // Note: no '+1' for final dock -- it's free.
                     let cost = current_cost + (k_start_cost as Cost);
                     let visits = s + 2;  // +2 for the start port (looped)
                     let score = eval_score(visits as u32, cost,
                                            /*looped=*/true);
                     if score > best_score {
-                        best_tour = Tour {
-                            cost,
-                            vertices: self.backtrack(start, set[k], &set, s),
-                        };
+                        let vertices = self.backtrack(start, set.elements[k], s);
+                        best_tour = Tour { cost, vertices };
                         best_score = score;
                     }
                 }
-                next_set(&mut set, s);
+                set.next(&self.flat_subsets_helper);
             }
         }
 
@@ -294,16 +403,6 @@ impl HeldKarp {
                   best_tour.vertices.len()-1, best_tour.vertices);
         }
         best_tour
-    }
-
-    // Index of the start where the given 'set' would be in a flattened array.
-    // The values of 'set' will be there in order.
-    fn flat_index_region(&self, set: &Set, s: usize) -> usize {
-        let mut loc = 0usize;
-        for i in 0..s {
-            loc += self.binomial[set[i] as usize][i+1];
-        }
-        self.b[s] + s * loc
     }
 
     // Debugging function, used to investigate a (better) given tour
@@ -319,14 +418,13 @@ impl HeldKarp {
 
         // +1 to dock start
         let mut our_tick = graph.start_tick + 1;
-        let mut our_set: Set = [VertexId::MAX; MAX_PORTS];
+        let mut our_set = array_init::array_init(|_| VertexId::MAX);
         let mut tour_tick = graph.start_tick + 1;
-        let mut tour_set: Set = [VertexId::MAX; MAX_PORTS];
+        let mut tour_set = array_init::array_init(|_| VertexId::MAX);
         for i in 1..tour.vertices.len() {
             info!("Target tour tick: {}", tour_tick);
             let prev_vertex = tour.vertices[i-1];
             let vertex = tour.vertices[i];
-            let s = i;
             let cost = graph.cost(graph.tick_offset(tour_tick), prev_vertex,
                                   vertex);
             info!("Target tour picked: {}->{} (cost {}+1)", prev_vertex+1,
@@ -334,7 +432,9 @@ impl HeldKarp {
             tour_tick += (cost as u16) + 1;
             tour_set[i-1] = translate(vertex);
             if vertex != start {
-                info!("{}", self._show(&tour_set, s, i-1, start));
+                let set = Combination::_new(&tour_set, i,
+                                            &self.flat_subsets_helper);
+                info!("{}", self._show(&set, i-1, start));
             }
 
             info!("Our tick: {}", our_tick);
@@ -345,9 +445,11 @@ impl HeldKarp {
             info!("Our tour picked: {}->{} (cost {}+1)", our_prev_vertex+1,
                   our_vertex+1, our_cost);
             our_tick += (our_cost as u16) + 1;
-            our_set[i-1] = translate(our_vertex);
+            our_set[i - 1] = translate(our_vertex);
             if our_vertex != start {
-                info!("{}", self._show(&our_set, s, i-1, start));
+                let set = Combination::_new(&our_set, i,
+                                            &self.flat_subsets_helper);
+                info!("{}", self._show(&set, i-1, start));
             }
             info!("-----------------------");
         }
@@ -355,20 +457,22 @@ impl HeldKarp {
     }
 
     // Use for debugging
-    fn _show(&self, set: &Set, s: usize, e_idx: usize, start: VertexId) -> String {
-        info!("looking up idx={} with s={}", self.flat_index_region(set, s) + e_idx, s);
-        let g = self.g[self.flat_index_region(set, s) + e_idx];
-        let p = self.p[self.flat_index_region(set, s) + e_idx];
+    fn _show(&self, set: &Combination, e_idx: usize, start: VertexId) -> String {
+        let idx = set.element_index(e_idx);
+        info!("looking up idx={} with s={}", idx, set.size);
+        let g = self.g[idx];
+        let p = self.p[idx];
         format!("g({mask}, {e}) = {g}   p({mask}, {e}) = {p}",
-                mask = self._show_set(set, s, start),
-                e = self.untranslate(start, set[e_idx]) + 1,
+                mask = self._show_set(set, start),
+                e = self.untranslate(start, set.elements[e_idx]) + 1,
                 p = self.untranslate(start, p) + 1)
     }
 
     // Use for debugging
-    fn _show_set(&self, set: &Set, s: usize, start: VertexId) -> String {
-        let set_vertices: Vec<_> = (0..s)
-            .map(|i| (self.untranslate(start, set[i])+1).to_string()).collect();
+    fn _show_set(&self, set: &Combination, start: VertexId) -> String {
+        let set_vertices: Vec<_> = (0..set.size)
+            .map(|i| (self.untranslate(start, set.elements[i])+1).to_string())
+            .collect();
         format!("{{{}}}", set_vertices.join(","))
     }
 }

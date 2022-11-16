@@ -1,9 +1,9 @@
 // TODOs
-// - Applying linear programming approaches in our setup?
-//   https://github.com/ztlpn/minilp/blob/master/examples/tsp.rs
-// - implement "slow" pathfinding
-// - implement "slow" held-karp
+// - push top game JSON in git
+// - collect some games without skipping to get a sample of normal games (do 100)
 // - write-up outline
+// - implement "simple" pathfinding
+// - implement "simple" held-karp
 // - pathfinding optimizations ablation
 // - graph optimizations ablation
 // - held-karp optimizations ablation
