@@ -1,6 +1,7 @@
 # Blitz 2023 Registration - /dev/null
 
 TODO prev chals
+TODO troll last year
 TODO this chal
 
 ## Summary
@@ -15,7 +16,7 @@ TODO results
 The following is a description of the challenge and how I approached it. For
 code structure documentation, jump to the end.
 
-### Challenge
+### 🚩 Challenge
 
 For this challenge, we are a salesperson that controls a boat and we want to
 visit as many unique ports as possible, as fast as possible, to get the highest
@@ -25,6 +26,7 @@ This is a tick-based game, where every tick our bot receives information about
 the map and must send the action that our boat will take. We are told we have
 1 second maximum per tick to return our action.
 
+#### Details ℹ️
 The **map** related information contains the following:
 
 - Dimensions: width/height for the tiles of the map;
@@ -56,6 +58,7 @@ Visually, the game looks like this:
 
 https://user-images.githubusercontent.com/1843555/202089081-23d1a5e6-ed20-4fae-b6fa-669074ab05f9.mp4
 
+#### Scoring 🧮
 The game ends if we dock the first port again (do a full tour) or if 400 ticks
 are reached. Then, the score is computed based on the following formula:
 
@@ -87,12 +90,14 @@ Based on the scoring formula, we see that:
   to get a 17 ports map, in a 17 ports loop in 59 ticks -- which would be an
   extremely lucky & packed map), our best bet is with a 20-ports game.
 
+#### Roll the Dice 🎲
 The randomness of some of the parameters (map generation, tide, # ports) leads
 to the optimal possible score on a game depending on luck, and can vary quite a
 bit between games.
 
-Here are two games with 20 ports that leads to very different optimal scores
-(the optimal solver will be described later):
+Here are two games with 20 ports that lead to very different optimal scores,
+even though they both visit 20 ports (the optimal solver will be described
+later):
 
 TODO 2 map gifs of same len side-by-side, with validated (offline) optimal scores
 
@@ -107,37 +112,60 @@ run an optimal solver. However, this does show that there's a good amount of
 variability and if we want to get a high score on the leaderboard, we'll have to
 roll the dice and rerun games for a chance at a high score.
 
-### Greedy Solver
+### 🤑 Greedy Solver
 
-TODO go in a straight line
+I started off in Python, and with a simple bot: start on the first port in the
+list, then go to the next one in a straight line, disregarding tides. This
+allowed me to get used to the challenge & its API, get a score on the board
+early so Marc doesn't pull my leg too much, and to design a bot API with:
+- "micro" control with a simple state machine that can follow a fixed path by
+sending `Sail` actions with the right directions, and `Dock` once the goal is
+reached;
+- "macro" control to pick goals and give paths (for now visit ports in the
+arbitrary input order and generate straight line paths).
 
-TODO A-star ignoring tides (assume top tide)
+As you can imagine, there's no guarantee that a straight line works depending
+on the topology, so this would often give a very negative score from getting
+to 400 ticks with almost no ports visited. I even got a ping from Andy saying
+"I didn't know it went this far into the negatives" after a -575 points game,
+shortly after a -950 points one.
 
-### Local Server
+Next, I implemented `A*` starting off from the [fantastic pathfinding resource
+at Red Blob Games](https://www.redblobgames.com/pathfinding/a-star/implementation.html)
+(newer version of the `Amit's A* pages`). For the heuristic, I used the
+[Chebyshev distance](https://en.wikipedia.org/wiki/Chebyshev_distance) (which
+is essentially `max(deltax, deltay)`) to account for diagonal movements of
+cost 1. My pathfinding implementation for now ignored tide changes, assuming
+that the tide was always at its lowest (most restrictive), meaning that all
+tiles that are navigable at that point are _always_ navigable. This restricts
+our truly optimal pathfinding opportunities, but gives us correct paths in
+the positive points range!
+
+### 🤖 Local Server
 
 TODO
 
-### Nearest Neighbor Solver
+### 🧭 Nearest Neighbor Solver
 
 TODO
 
-### Pathfinding With Tides
+### 🌊 Pathfinding With Tides
 
 TODO how to modify A-star
 
-### Building a Graph
+### 🕸️ Building a Graph
 
 TODO graph (visualization, too?)
 
 TODO mention optimizations (see ablation section)
 
-### ... And Now It's a TSP!
+### 🕴️ ... And Now It's a TSP!
 
 TODO define
 TODO how it differs
 TODO usual approaches
 
-### Heuristic Solver: Ant System
+### 🐜 Heuristic Solver: Ant System
 
 TODO define / pseudocode
 TODO example
@@ -145,30 +173,30 @@ TODO visuals
 TODO tooling (visualization/sweep)
 TODO variants, supported by hyperparams
 
-### Exact Solver: Held-Karp
+### ✍️ Exact Solver: Held-Karp
 TODO 20 ports right at the brim of possible in <1s
 
-#### Held-Karp
+#### Held-Karp 📋
 TODO algo explanation
 TODO start vertex vs. our setup
 
-#### Speeding it up
+#### Speeding it up ⏩
 TODO profiling with xprof
 TODO masks
 TODO sets closer in memory
 TODO multithreading
 
-#### ... Ship It?
+#### ... Ship It? 🚢
 TODO didn't work
 TODO my own AWS server
 
-#### Redeeming this
+#### Redeeming this 🩹
 TODO restrospect: spent too much time on this, should have switched to try
      adapting simplex-based approaches
 TODO optimal solver
 TODO live evaller
 
-### Final Solver
+### 🦾 Final Solver
 
 TODO go back to ant, let it run, reswept on higher scoring map
 TODO helper that runs in a loop w/ graphql, collects games, reauths everyday
