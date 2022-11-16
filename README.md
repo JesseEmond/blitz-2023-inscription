@@ -52,9 +52,9 @@ We must give our **action**, out of the following:
 - Dock: must be done after reaching a port to count it as visited;
 - Anchor: wait and do nothing.
 
-Visually, the game looks something like this:
+Visually, the game looks like this:
 
-TODO include gif
+https://user-images.githubusercontent.com/1843555/202089081-23d1a5e6-ed20-4fae-b6fa-669074ab05f9.mp4
 
 The game ends if we dock the first port again (do a full tour) or if 400 ticks
 are reached. Then, the score is computed based on the following formula:
