@@ -56,6 +56,7 @@ We must give our **action**, out of the following:
 
 Visually, the game looks like this:
 
+TODO re-record after nvidia setting fix
 https://user-images.githubusercontent.com/1843555/202089081-23d1a5e6-ed20-4fae-b6fa-669074ab05f9.mp4
 
 #### Scoring 🧮
@@ -95,11 +96,11 @@ The randomness of some of the parameters (map generation, tide, # ports) leads
 to the optimal possible score on a game depending on luck, and can vary quite a
 bit between games.
 
-Here are two games with 20 ports that lead to very different optimal scores,
-even though they both visit 20 ports (the optimal solver will be described
-later):
+Here are two games side-by-side with 20 ports that lead to very different
+optimal scores (3422 points in 263 ticks vs. 3734 points in 211 ticks), even
+though they both visit 20 ports (the optimal solver will be described later):
 
-TODO 2 map gifs of same len side-by-side, with validated (offline) optimal scores
+https://user-images.githubusercontent.com/1843555/202344987-9ca0679c-5819-477a-9ae1-03f6531ca394.mp4
 
 To give an idea of the range, here is the distribution of optimal scores for 100
 20-port games assigned to us by the server:
