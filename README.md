@@ -196,13 +196,14 @@ Assuming the lowest tide is fairly restrictive, we might instead
 unlock shortcuts when the tide is high if we time our movements right.
 
 To adjust pathfinding to take into account tides, we can change
-the neighbor generation in `A*` to add tiles that are navigable
-at the tide for the current tick offset. This tide value can be
-found by looking up `tide_schedule[tick % len(tide_schedule)]`,
-by using the `g` score as the `tick` value (the cost so far).
+the neighbor generation in `A*` to dynamically lookup tiles that
+are navigable with the tide for the current tick offset. This current
+tide value can be found by looking up
+`tide_schedule[tick % len(tide_schedule)]` (since it cycles), by using
+the `A*` `g` score as the `tick` value (the cost so far).
 
 Then, we also want to allow our boat to "wait" for a tick (send
-an `anchor` action) in case we can take advantage of a following
+an `anchor` action) in case we can take advantage of a
 tide change in the next few ticks. To do so, we change our `A*`
 like this:
 - The state we push in the priority queue is no longer just a
@@ -212,13 +213,12 @@ like this:
   - Add horizontal/vertical/diagonal move actions as
     `(new_position, 0)` with cost 1;
   - Add "wait" actions as `(position, wait+1)` with cost 1;
-  - "Consider wait?": do not bother waiting more than
+  - Only add "wait" sometimes: do not bother waiting more than
     `len(tide_schedule)` ticks, there's no point since it cycles
-    after than (so only add "wait" actions sometimes);
-  - "Forced wait?": do not consider move actions if we are on
-    an unnavigable tile (e.g. we waited and the tide went down),
-    we are not allowed to move then (so only add "move" actions
-    sometimes).
+    after thant;
+  - Only add "move" sometimes: do not consider move actions if
+    we are on an unnavigable tile (e.g. we waited and the tide
+    went down), we are not allowed to move then.
 
 With this, we start getting a boat that moves efficiently
 between ports and takes some pretty cool shortcuts!
