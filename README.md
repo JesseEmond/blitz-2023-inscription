@@ -56,8 +56,7 @@ We must give our **action**, out of the following:
 
 Visually, the game looks like this:
 
-TODO re-record after nvidia setting fix
-https://user-images.githubusercontent.com/1843555/202089081-23d1a5e6-ed20-4fae-b6fa-669074ab05f9.mp4
+https://user-images.githubusercontent.com/1843555/202345642-41338ea5-d4bc-4326-8b3d-16e859bdec63.mp4
 
 #### Scoring 🧮
 The game ends if we dock the first port again (do a full tour) or if 400 ticks
