@@ -151,8 +151,8 @@ run locally, from game data that I had logged in my previous games on the
 server.
 
 This is something that really would have made more sense to do as a very
-first step, but hey, I wanted _something_ on the leaderboard
-:slightly_smiling_face:.
+first step, but hey, I wanted _something_ on the leaderboard.
+:slightly_smiling_face:
 
 I made sure that my bot running against my local server on historical games
 gave the same score as it did on the server, and it took some iterations to
@@ -162,7 +162,28 @@ feedback loop.
 
 ### 🧭 Nearest Neighbor Solver
 
-TODO
+Following the input port list blindly (spawn on the first one, go to the
+next, etc.) is not a good strategy -- we end up needlessly taking very
+long paths when we could visit some ports along the way.
+
+Instead, we can prioritize the next unvisited port with the shortest
+distance. On the
+[Traveling Salesperson Problem](https://en.wikipedia.org/wiki/Travelling_salesman_problem),
+this is essentially the
+[nearest neighbour algorithm](https://en.wikipedia.org/wiki/Nearest_neighbour_algorithm).
+
+To find the shortest path to _any_ goals (the closest unvisited port),
+I changed my `A*` implementation to early exit if any position in a
+list of goals is found, instead of a single position.
+
+Additionally, since our ports might not all be reachable from each other
+(since we're doing `A*` assuming the lowest possible tide), we also
+simulate this strategy for each possible starting point, to pick which
+spawning position would give the best score. This idea is also
+beneficial if we take tides into account -- some starting positions
+might be better than others because they start us in a favorable tide
+point in the schedule.
+
 
 ### 🌊 Pathfinding With Tides
 
