@@ -151,8 +151,8 @@ run locally, from game data that I had logged in my previous games on the
 server.
 
 This is something that really would have made more sense to do as a very
-first step, but hey, I wanted _something_ on the leaderboard.
-:slightly_smiling_face:
+first step, but hey, I wanted _something_ on the
+leaderboard. :slightly_smiling_face:
 
 I made sure that my bot running against my local server on historical games
 gave the same score as it did on the server, and it took some iterations to
@@ -184,16 +184,60 @@ beneficial if we take tides into account -- some starting positions
 might be better than others because they start us in a favorable tide
 point in the schedule.
 
+As part of this planning/simulation, I also consider the option of
+"going home" (back to the first port) early in the search (vs.
+continuing to the rest of the ports), since it can sometimes be best to
+end the game earlier vs. visit more ports for the amount of ticks
+needed to get there.
 
 ### 🌊 Pathfinding With Tides
 
-TODO how to modify A-star
+Assuming the lowest tide is fairly restrictive, we might instead
+unlock shortcuts when the tide is high if we time our movements right.
+
+To adjust pathfinding to take into account tides, we can change
+the neighbor generation in `A*` to add tiles that are navigable
+at the tide for the current tick offset. This tide value can be
+found by looking up `tide_schedule[tick % len(tide_schedule)]`,
+by using the `g` score as the `tick` value (the cost so far).
+
+Then, we also want to allow our boat to "wait" for a tick (send
+an `anchor` action) in case we can take advantage of a following
+tide change in the next few ticks. To do so, we change our `A*`
+like this:
+- The state we push in the priority queue is no longer just a
+  position on the grid, it is now a tuple `(position, wait)`,
+  where "wait" is the amount of ticks we have waited for so far.
+- When adding `A*` neighbors:
+  - Add horizontal/vertical/diagonal move actions as
+    `(new_position, 0)` with cost 1;
+  - Add "wait" actions as `(position, wait+1)` with cost 1;
+  - "Consider wait?": do not bother waiting more than
+    `len(tide_schedule)` ticks, there's no point since it cycles
+    after than (so only add "wait" actions sometimes);
+  - "Forced wait?": do not consider move actions if we are on
+    an unnavigable tile (e.g. we waited and the tide went down),
+    we are not allowed to move then (so only add "move" actions
+    sometimes).
+
+With this, we start getting a boat that moves efficiently
+between ports and takes some pretty cool shortcuts!
+
+https://user-images.githubusercontent.com/1843555/202583986-708dc8a8-f441-420f-810f-d34f33e25ef9.mp4
+
+_Note that diagonal movements of cost 1 are visually
+unintuitive -- it often takes paths that look slower, but are
+equivalent to going in straight lines. I didn't do anything to
+avoid
+[ugly paths](https://www.redblobgames.com/pathfinding/a-star/implementation.html#troubleshooting-ugly-path)._
 
 ### 🕸️ Building a Graph
 
-TODO graph (visualization, too?)
+TODO A-star with all paths, see ablation section
 
-TODO mention optimizations (see ablation section)
+TODO move to rust
+
+TODO graph (visualization, too?)
 
 ### 🕴️ ... And Now It's a TSP!
 
@@ -246,9 +290,6 @@ TODO final score, TODO in how many runs
 TODO which ones
 
 ### Pathfinding Optimizations
-TODO
-
-### Graph Optimizations
 TODO
 
 ### Ant System Optimizations
