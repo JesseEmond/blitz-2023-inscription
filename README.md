@@ -56,7 +56,7 @@ We must give our **action**, out of the following:
 
 Visually, the game looks like this:
 
-https://user-images.githubusercontent.com/1843555/202089081-23d1a5e6-ed20-4fae-b6fa-669074ab05f9.mp4
+https://user-images.githubusercontent.com/1843555/202345642-41338ea5-d4bc-4326-8b3d-16e859bdec63.mp4
 
 #### Scoring 🧮
 The game ends if we dock the first port again (do a full tour) or if 400 ticks
@@ -95,22 +95,23 @@ The randomness of some of the parameters (map generation, tide, # ports) leads
 to the optimal possible score on a game depending on luck, and can vary quite a
 bit between games.
 
-Here are two games with 20 ports that lead to very different optimal scores,
-even though they both visit 20 ports (the optimal solver will be described
-later):
+Here are two games side-by-side with 20 ports that lead to very different
+optimal scores (3422 points in 263 ticks vs. 3734 points in 211 ticks), even
+though they both visit 20 ports (the optimal solver will be described later):
 
-TODO 2 map gifs of same len side-by-side, with validated (offline) optimal scores
+https://user-images.githubusercontent.com/1843555/202344987-9ca0679c-5819-477a-9ae1-03f6531ca394.mp4
 
-To give an idea of the range, here is the distribution of 100 optimal scores for
+To give an idea of the range, here is the distribution of optimal scores for 100
 20-port games assigned to us by the server:
 
-TODO distribution
+![optimal score distribution](https://user-images.githubusercontent.com/1843555/202337764-ce9662e0-ff0a-424e-9349-cf21eefa25da.png)
 
 Note that this is showing the optimal score, too (best case scenario), and that
 we have a 1-second time limit to reply to each tick, which might not allow us to
 run an optimal solver. However, this does show that there's a good amount of
-variability and if we want to get a high score on the leaderboard, we'll have to
-roll the dice and rerun games for a chance at a high score.
+variability across games and if we want to get a high score on the leaderboard,
+we'll have to roll the dice and rerun games for a chance at a high score towards
+the right of this distribution.
 
 ### 🤑 Greedy Solver
 
