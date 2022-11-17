@@ -1,7 +1,4 @@
 // TODOs
-// - push top game JSON in git
-// - collect some games without skipping to get a sample of normal games (do 100)
-// - write-up outline
 // - implement "simple" pathfinding
 // - implement "simple" held-karp
 // - pathfinding optimizations ablation

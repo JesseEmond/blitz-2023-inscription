@@ -140,6 +140,7 @@ def read_game_logs(game_id: int) -> str:
 
 
 def extract_outer_object(line: str) -> Tuple[str, str]:
+  # TODO: this is super hacky, should just parse JSON...
   first_bracket = line.index(' { ')
   last_bracket = len(line) - 1 - line[::-1].index('}')
   obj = line[:first_bracket]
@@ -148,6 +149,9 @@ def extract_outer_object(line: str) -> Tuple[str, str]:
 
 
 def extract_game(logs: str) -> Optional[Tick]:
+  # TODO: this is super hacky because I didn't want to mess with my existing
+  # running bot that Debug-logged Rust objects, but the bot should absolutely
+  # have been changed to dump the tick in JSON to parse it trivially here...
   lines = [line.strip() for line in logs.split('\n')]
   start = next(
       (i for i, line in enumerate(lines) if '--- TICK DUMP BEGIN ---' in line),
