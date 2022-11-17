@@ -21,6 +21,9 @@ from game_message import Action, Anchor, Dock, Position, Sail, Spawn, Tick, dire
 import seen_games
 
 
+GAMES_FOLDER = '../games'
+
+
 def vizier_problem_statement() -> vz.ProblemStatement:
   problem = vz.ProblemStatement()
   problem.search_space.root.add_int_param('iterations', 1, 500)
@@ -259,14 +262,14 @@ async def run():
     arg = next(arg for arg in sys.argv if arg.startswith('--gameid='))
     _, game_id = arg.split('=')
     game_id = int(game_id)
-    with open(f'../games/{game_id}.json', 'r') as f:
+    with open(f'{GAMES_FOLDER}/{game_id}.json', 'r') as f:
       tick = Tick.from_dict(json.load(f))
     all_games.append(tick)
     game_ids.append(game_id)
   if is_eval:
     if not is_single:
-      for path in glob.glob('../games/*.json'):
-        game_id = int(re.match(r'../games/(\d+).json', path).group(1))
+      for path in glob.glob(f'{GAMES_FOLDER}/*.json'):
+        game_id = int(re.match(GAMES_FOLDER + r'/(\d+).json', path).group(1))
         with open(path, 'r') as f:
           tick = Tick.from_dict(json.load(f))
           if len(tick.map.ports) >= 20:
