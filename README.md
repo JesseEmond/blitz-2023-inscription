@@ -101,16 +101,17 @@ later):
 
 TODO 2 map gifs of same len side-by-side, with validated (offline) optimal scores
 
-To give an idea of the range, here is the distribution of 100 optimal scores for
+To give an idea of the range, here is the distribution of optimal scores for 100
 20-port games assigned to us by the server:
 
-TODO distribution
+![optimal score distribution](https://user-images.githubusercontent.com/1843555/202337764-ce9662e0-ff0a-424e-9349-cf21eefa25da.png)
 
 Note that this is showing the optimal score, too (best case scenario), and that
 we have a 1-second time limit to reply to each tick, which might not allow us to
 run an optimal solver. However, this does show that there's a good amount of
-variability and if we want to get a high score on the leaderboard, we'll have to
-roll the dice and rerun games for a chance at a high score.
+variability across games and if we want to get a high score on the leaderboard,
+we'll have to roll the dice and rerun games for a chance at a high score towards
+the right of this distribution.
 
 ### 🤑 Greedy Solver
 
