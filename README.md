@@ -144,7 +144,21 @@ the positive points range!
 
 ### 🤖 Local Server
 
-TODO
+Making changes, uploading the code to the server, waiting for a game to run,
+then downloading the logs to iterate is quite a long feedback loop to find
+trivial bugs. I pivoted to implementing my own version of the server that can
+run locally, from game data that I had logged in my previous games on the
+server.
+
+This is something that really would have made more sense to do as a very
+first step, but hey, I wanted _something_ on the leaderboard
+:slightly_smiling_face:.
+
+I made sure that my bot running against my local server on historical games
+gave the same score as it did on the server, and it took some iterations to
+iron out the exact ordering of operations executed on the server for
+movements and tide updates. Eventually though, I ended with a much faster
+feedback loop.
 
 ### 🧭 Nearest Neighbor Solver
 
