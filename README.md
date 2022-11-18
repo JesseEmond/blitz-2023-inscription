@@ -262,7 +262,7 @@ to speed things up:
     list and reprioritize the priority queue with updated
     heuristic values;
 - I did a couple more optimizations, outlined in the
-  `Speech Optimization Ablation` section.
+  `Speed Optimization Ablation` section.
 
 TODO: graph visualization
 
@@ -294,13 +294,171 @@ tours in reasonable time, or consider exact solvers
 that find the optimal tour in exponential algorithmic
 time.
 
-### 🐜 Heuristic Solver: Ant System
+### 🐜 Heuristic Solver: Ant Colony Optimization
 
-TODO define / pseudocode
-TODO example
-TODO visuals
-TODO tooling (visualization/sweep)
-TODO variants, supported by hyperparams
+I thought this would be a very good opportunity to
+try a fun algorithm I recently learned about in one
+of
+[Sebastian Lague's excellent videos](https://www.youtube.com/watch?v=X-iSQQgOd1A)
+(amazing channel -- highly recommend it): `Ant Colony
+Optimization`
+([widipedia](https://en.wikipedia.org/wiki/Ant_colony_optimization_algorithms)).
+The idea is to simulate ants that leave _pheromone
+trails_ on paths they visit. Each ant samples its
+actions through a mix of heuristics and pheromones
+left by other ants. Repeat for multiple ants, for
+multiple iterations, and leave pheromone trails for
+better solutions to encourage exploitation of "good"
+edges.
+
+At a high level, the ant colony optimization (ACO)
+algorithm looks like this:
+
+```python
+def ACO():
+  for _ in range(ITERATIONS):
+    ants = ConstructSolutions()  # Simulate ants
+    LocalSearch(ants)  # Optionally locally improve solutions
+    UpdateTrails(ants)
+  return best_ant
+```
+
+For us, this looks something like this (this is a bit like
+pseudo-code, assuming some global variables exist for
+simplicity):
+
+```python
+def ConstructSolutions():
+  [SimulateAnt() for _ in range(ANTS)]
+  
+def SimulateAnt():
+  spawn = RandomChoice(ports)
+  ant = Ant(spawn)
+  unvisited = set(ports) - set([start])
+  while unvisited:
+    choice = SampleChoice(ant, unvisited)
+    unvisited.remove(choice)
+    ant.Visit(choice)
+  return ant
+  
+def SampleChoice(ant, options):
+  weights = []
+  for option in options:
+    pheromone = pheromones[ant.position][option]
+    heuristic = graph.cost(ant.position, ant.current_tick, option)
+    weight = pow(pheromone, ALPHA) * pow(heuristic, BETA)
+    weights.append(weight)
+  return Sample(weights)
+  
+def LocalSearch(ants):
+  for ant in ants:
+    ant.GoHomeEarlyIfBetter()  # close loop earlier if gives a better score
+    
+def UpdateTrails(ants):
+  for source in ports:
+    for dest in ports:
+      pheromones[source][dest] *= (1 - EVAPORATION_RATE)
+  for ant in ants:
+    pheromone_add = 1 / ant.tick
+    for source, dest in ant.path:
+      pheromones[source][dest] += pheromone_add
+```
+
+From there, a lot of variations are possible. I found the
+following links super useful when trying ideas:
+[[1]](https://staff.washington.edu/paymana/swarm/stutzle99-eaecs.pdf)
+[[2]](http://www.scholarpedia.org/article/Ant_colony_optimization)
+[[3]](https://www.researchgate.net/publication/277284831_MAX-MIN_ant_system).
+
+Some noteworthy variants:
+- **Ant System** (AS): as defined above;
+- **Ant Colony System** (ACS):
+  - `SampleChoice`: with some probability, greedily pick the highest
+    weight option (exploration vs. exploitation);
+  - `UpdateTrails`: only add pheromones for the global best ant seen
+    so far, with the evaporation multiplier applied to the pheromone
+    add, too;
+  - `SimulateAnt`: when visiting a port, apply a local pheromone
+    trail update to make it less desirable _during_ iteration before
+    next ants are simulated (promote exploration).
+- **MAX-MIN Ant System** (MMAS):
+  - `UpdateTrails`: like _ACS_, only the global best ant adds
+    pheromones;
+  - `UpdateTrails`: pheromones are clamped to a min/max to avoid
+    search stagnation;
+  - Pheromones are initially set to the max to promot exploration.
+- And many others
+
+To support a range of variants, I implemented _ACO_ with multiple
+hyperparameters:
+- _iterations_: total number of ant simulations for the algorithm;
+- _ants_: number of ants simulated per iteration;
+- _evaporation_rate_: "EVAPORATION_RATE" above -- used when
+  evaporation pheromones, and used as a multiplier for added
+  pheromones;
+- _exploitation_probability_: probability of taking the max-weight
+  option in sampling;
+- **not** _alpha_: power for the pheromone -- I removed this from
+  computations to speed up processing (see the `Speed Optimization
+  Ablation` section), which is not strictly equivalent even
+  post-sweeps, but gave me decent results while being faster.
+- _beta_: power for the heuristic when computing sampling weights;
+- _local_evaporation_rate_: used in local updates (from _ACO_
+  definition) to disincentivize other ants from the same iteration
+  to promote exploration;
+- _min_pheromones_: min value that pheromones can have, from _MMAS_.
+- _max_pheromones_: max value that pheromones can have, from _MMAS_.
+- _pheromone_init_ratio_: from min to max pheromones, what value
+  should we initialize pheromones with (0 = min, 1 = max).
+  
+The idea was to make it so that the different variants were
+somewhat available as different points in the hyperparameter
+space:
+- **AS**: `exploitation_probability=0, local_evaporation_rate=0,
+           min_pheromones=0, max_pheromones=high_value,
+           pheromone_init_ratio=low_value`
+- **ACS**: `min_pheromones=0, max_pheromones=high_value,
+            pheromone_init_ratio=low_value`
+- **MMAS**: `exploitation_probability=0, local_evaporation_rate=0,
+             pheromone_init_ratio=1`
+
+I implemented this and the results were somewhat reasonable, but
+the behavior felt very opaque -- when it's doing poorly, is it
+because of a bug, or because of bad hyperparameters? So I spent
+some time on visualization tools to understand what the ants
+behavior was like. Here is what is looks like on an example game:
+
+TODO ant visualization
+
+TODO describe the visuals
+
+Next, to pick a good set of hyperparameters, I implemented a
+couple of extra tools:
+- A `collect_games.py` tool that runs games on the server
+  in a loop (note: also useful when we're trying to get lucky
+  with a high-potential game!), downloads the logs and saves
+  the games to disk;
+- Extended `server.py` to support an "eval" mode that goes
+  through all locally stored games and runs our bots to give
+  us some stats (min/max/avg) on our how our bot is doing on
+  a range of games;
+  
+With this, I could then add support for hyperparameter
+sweeping plugged in the `server.py` eval logic. I
+used [vizier](https://github.com/google/vizier) which I have
+some familiarity with. We can define hyperparameter ranges,
+pick an optimizer, and let it explore the hyperparameter
+space. In the end, I stuck to random search, but this is
+easy to change and extend with your own search algorithm.
+
+I could have added more tuning here -- there are other
+ant system variants or settings that can be useful (e.g.
+a schedule between picking the iteration local best ant
+vs. global best one) and I made some arbitrary decisions
+(e.g. assign pheromone trails to directed edges, I didn't
+try undirected ones or more granular per-tick-offset ones).
+
+But instead, I got distracted...
 
 ### ✍️ Exact Solver: Held-Karp
 TODO 20 ports right at the brim of possible in <1s
