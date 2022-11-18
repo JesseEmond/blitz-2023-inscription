@@ -233,11 +233,38 @@ avoid
 
 ### 🕸️ Building a Graph
 
-TODO A-star with all paths, see ablation section
+When we get the game information on the first tick, we can
+precompute all of the following at once:
+- For each port, shortest path to all other ports;
+- Do that for each possible tick offset in the tide schedule.
 
-TODO move to rust
+The reason for doing so is that we can then create a graph
+from our ports:
+- Each port is a **vertex**;
+- Each port connects to other ports via a precomputed shortest
+  path -- that's an **edge**;
+- The **cost** of this edge (and the exact path details)
+  depends on the tick offset we are at on the source vertex.
 
-TODO graph (visualization, too?)
+But this gets expensive: 10 tick offsets, 20 vertices,
+190 edges (fully connected graph), that's 1900 total shortest
+paths if we do them pairwise. If we want to fit this in 1
+second and do processing on that graph afterwards, we need
+to speed things up:
+- I rewrote the bot in Rust;
+- I changed my `A*` implementation to support finding the
+  shortest paths to _all_ targets at once, instead of the
+  closest one:
+  - Switch the heuristic to the smallest
+    [Chebyshev distance](https://en.wikipedia.org/wiki/Chebyshev_distance)
+    in the list of remaining ports;
+  - When a goal is found, we remove it from the remainder
+    list and reprioritize the priority queue with updated
+    heuristic values;
+- I did a couple more optimizations, outlined in the
+  `Speech Optimization Ablation` section.
+
+TODO: graph visualization
 
 ### 🕴️ ... And Now It's a TSP!
 
