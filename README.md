@@ -268,9 +268,31 @@ TODO: graph visualization
 
 ### 🕴️ ... And Now It's a TSP!
 
-TODO define
-TODO how it differs
-TODO usual approaches
+Now we have a graph and we're effectively trying to find
+the shortest possible tour that visits each "city" (port)
+once, returning to the origin. That's a
+[Traveling Salesperson Problem](https://en.wikipedia.org/wiki/Travelling_salesman_problem)
+(TSP)! A famously NP-hard problem.
+
+On distinction, however, is that our edge costs are
+dynamic, depending on the cost of our tour _so far_
+(changes the tick offset we'd be at, and thus the
+shortest path & cost to other ports). This means that
+traditional approaches to solving TSPs have to be
+adapted.
+
+One simple example of this is that TSP
+solutions often assume that we are starting on the
+first node without loss of generality -- it doesn't
+matter what the origin node is. For us, however, this
+impacts tide offsets thorought the tour, which can
+make a spawning node better than others.
+
+We can still explore TSP approaches, though: we can
+use a heuristic solver that can give suboptimal
+tours in reasonable time, or consider exact solvers
+that find the optimal tour in exponential algorithmic
+time.
 
 ### 🐜 Heuristic Solver: Ant System
 
