@@ -215,7 +215,7 @@ like this:
   - Add "wait" actions as `(position, wait+1)` with cost 1;
   - Only add "wait" sometimes: do not bother waiting more than
     `len(tide_schedule)` ticks, there's no point since it cycles
-    after thant;
+    after that;
   - Only add "move" sometimes: do not consider move actions if
     we are on an unnavigable tile (e.g. we waited and the tide
     went down), we are not allowed to move then.
@@ -451,6 +451,8 @@ pick an optimizer, and let it explore the hyperparameter
 space. In the end, I stuck to random search, but this is
 easy to change and extend with your own search algorithm.
 
+TODO sweep viz
+
 I could have added more tuning here -- there are other
 ant system variants or settings that can be useful (e.g.
 a schedule between picking the iteration local best ant
@@ -461,11 +463,58 @@ try undirected ones or more granular per-tick-offset ones).
 But instead, I got distracted...
 
 ### ✍️ Exact Solver: Held-Karp
-TODO 20 ports right at the brim of possible in <1s
+
+A 20 "city" TSP is not _that_ big. Even with an exponential
+time exact TSP algorithm like
+[Held-Karp](https://en.wikipedia.org/wiki/Held%E2%80%93Karp_algorithm)
+that runs in `O(2^n n^2)`, that's within a constant factor of
+`2^20 * 20^2 ~= 419M`, which is definitely tractable, and
+maybe... even doable within 1 second?
 
 #### Held-Karp 📋
-TODO algo explanation
-TODO start vertex vs. our setup
+
+A naive approach to solving the TSP would be to consider every
+possible permutation of vertices; `n!` of them. For 20 cities,
+that's `2,432,902,008,176,640,000` permutations -- a bit much.
+Instead, _Held-Karp_ formulates this as a dynamic programming
+problem: we solve easier versions of the problem to help us
+solver harder versions of it, re-using information along the way.
+
+On a normal graph (ignoring the specifics of the Blitz for now),
+_Held-Karp_ defines the problem with a helper `g(S, e)` function.
+This function tells us "starting on vertex `1`, going through
+all ports of set `S` in some order and _ending_ on vertex `e`, what
+is the optimal cost?". It turns out that if we have `g(S', e)`
+computed for every possible set `S'` with one less element than
+`S`, we can compute `g(S, e)`. Here's how we go about it, by
+defining `g(S, e)` recursively:
+- `g({k}, k)` is trivially `c(1, k)` -- the only path that starts
+  at vertex `1`, goes through all vertices in `{k}` and ends in
+  `k`, well is the `1->k` edge of cost `c(1, k)`;
+- `g(S, k)` can be determined by looking at every vertex `m` in
+  `S\{k}` (`S` without `k`), and picking the one that has the
+  lowest value for `g(S\{k}, m) + c(m, k)`. In plain words: of
+  this set `S` of nodes (without our target end `k` node), which
+  one would be the best second-to-last node to take to then reach
+  `k`?
+  
+With this, our TSP cost is then as simple as checking for what
+vertex `k` we get the lowest cost for `g(all_nodes, k) + c(k, 1)`
+to complete our tour. While coding this, we check every
+combination of 1 element (`n-choose-1`), then 2 elements
+(`n-choose-2`), then 3, etc. (this is where the `2^n` comes from),
+storing values computed along the way, and keeping track of
+decisions made to be able to backtrack like traditional dynamic
+programming solutions.
+
+In our case, we have some added complexities:
+- We need to dock ports, not just navigate to them, but that's
+  just a few `+1`s to add;
+- The cost function `c` depends on the current tide offset we're
+  at, but we can know this from the cost-so-far we look up in `g`;
+- We can't assume without-loss-of-generality that starting at `1`
+  is fine, so we need to repeat this for every possible starting
+  city.
 
 #### Speeding it up ⏩
 TODO profiling with xprof
