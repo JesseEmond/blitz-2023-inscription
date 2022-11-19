@@ -266,6 +266,15 @@ to speed things up:
 
 TODO: graph visualization
 
+Around this time, I added a "give up" mode to my bot, that
+quickly docks the initial port twice to get 0 points and
+early-exit. Because this graph processing is getting a bit
+compute-heavy and we are mostly interested in 20-ports
+games to get a higher score on the leaderboard, we can
+save time (and minimize our impact on Coveo infrastructure
+as much as possible) by skipping games that are < 20 ports.
+
+
 ### 🕴️ ... And Now It's a TSP!
 
 Now we have a graph and we're effectively trying to find
@@ -293,6 +302,16 @@ use a heuristic solver that can give suboptimal
 tours in reasonable time, or consider exact solvers
 that find the optimal tour in exponential algorithmic
 time.
+
+Our bot's architecture now becomes:
+- On the first tick, a **solver** plans a solution to
+  the game (after building the graph);
+- A **macro** struct executes the plan by keeping
+  track of the current step in the solution,
+  adjusting the micro state machine to provide exact
+  paths to follow;
+- A **micro** struct produces actions based on the
+  state we are in.
 
 ### 🐜 Heuristic Solver: Ant Colony Optimization
 
@@ -531,11 +550,14 @@ to iterate on optimizations. The following were the most impactful,
 but see the `Speed Optimizations Ablation` section for details:
 - Represent sets of elements as a `u32` mask, with clever
   [bit hacks](https://graphics.stanford.edu/~seander/bithacks.html#NextBitPermutation)
-  to go through all permutations with `s` bits set to 1. We can
-  then use this mask directly as an index in a contiguous array;
+  to go through all permutations with a fixed amount of bits set
+  to 1. We can then use this mask directly as an integer index in
+  a contiguous array;
 - Hardcode the number of ports and tide schedule --
   `% len(tide_schedule)` is relatively cheap in general, but in
-  a tight loop it can become a bottleneck;
+  a tight loop it can become a bottleneck. A hard-coded value
+  can lead to the compiler replacing that with a more efficient
+  way to compute `% 10`;
 - Multithread the processing by trying multiple starting ports
   in parallel. This doesn't require synchronization so we can
   almost divide our processing time by the number cores we
@@ -543,7 +565,22 @@ but see the `Speed Optimizations Ablation` section for details:
   - By running a "print the CPU info" Python bot on the server,
     I could see that there were 4 physical (i.e. without
     hyperthreading, since this is compute-bound processing)
-    cores available.
+    cores available;
+- Speed up graph generation (pathfinding) a bit -- it's not the
+  bottleneck, but savings here free up some "time budget" for
+  Held-Karp:
+  - Added multithreading, generating starting points in parallel;
+  - Packed the tuple `(pos, wait)` A-star state as a `u32`:
+    `pos.x << 16 | pos.y << 8 | wait` (works for our 60x60 maps
+    and max 10 tick offsets), so that hashing can be trivially
+    hashing just the `u32`;
+  - Switched hashsets to `FxHashSet`, since the std one
+    [can be slow](https://nnethercote.github.io/perf-book/hashing.html)
+    (and was showing up in profiling);
+  - Implemented "early exploration" (thanks to
+    [this source](https://takinginitiative.wordpress.com/2011/05/02/optimizing-the-a-algorithm/),
+    where a neighbor node can skip the priority queue entirely
+    if its f-score is smaller than or equal to the current one.
 - Place our data in our contiguous array in order of length of
   subset `S`, since that matches the order in which we iterate
   in our dynamic programming solution. This leads to memory
@@ -560,11 +597,53 @@ And with all that... It could barely fit in a second in my local
 tests! 🎉 It sometimes would go a bit over when you add up the
 graph building costs, but I also noticed before that the server
 looked like it allowed a bit over 1 second per tick (closer to 2s?),
-so maybe that's fine.
+so maybe we would be fine?
 
 #### ... Ship It? 🚢
-TODO didn't work
-TODO my own AWS server
+
+At that point I was really excited that I might be able to
+basically "solve" the challenge (get the optimal score) when
+the map's optimal solution is to visit 20 ports.
+
+I uploaded to the server, kicked off a game, retried until I
+got a 20 ports game and... score of `-1`. Uh oh, that's usually
+a crash. I open the game and... it took _5 seconds_ to run our
+first "planning" tick!
+
+Well, that's a bummer. I checked a couple of things:
+- The CPU on the server had a higher frequency than my
+  desktop's;
+- It had a much smaller CPU cache than my desktop's, so I
+  made some extra attempts to reduce the memory footprint
+  (e.g. pack graph costs for all tide offsets in a `u64`,
+  with a 'base' cost and a 'diff' from that base with 4
+  bits, times 10 offsets). This helped a bit, but nowhere
+  close to enough;
+- The server runs on AMD, I have an Intel, maybe some
+  critical Intel optimizations are happening...?
+  - I deduced the AWS machine it was running on based on
+    the specs I was seeing, then **spun up my own AWS
+    server** to try and replicate the issue with the same
+    specs (I really wanted that optimal solve each game),
+    but I still didn't see the same slowdown.
+- Spent a lot of time looking for ways to make changes
+  to Held-Karp to make the starting port decision a part
+  of the search, but the ideas I tried here sometimes gave
+  suboptimal outputs, since it might be best to start from
+  a node mid-way during the dynamic programming search,
+  but at the end (when looping back to the start) the best
+  start node might change. I didn't find a way to avoid
+  having to do the`20x` processing here.
+    
+At that point it didn't seem worth it (or fun) to try to
+debug this slowdown blind, without being able to reproduce
+& measure the causes of slowdowns. I tested different
+number of threads, and it did look like running >3 threads
+was slower despite the 4 physical cores, so it seems that
+we might be getting a slice of the compute on the machine
+we're running on (makes sense, not having the whole
+machine to ourselves for each test!) and that we can't
+make full use of the physically available parallelism.
 
 #### Redeeming this 🩹
 TODO restrospect: spent too much time on this, should have switched to try
@@ -574,6 +653,7 @@ TODO live evaller
 
 ### 🦾 Final Solver
 
+TODO held-karp N starts
 TODO go back to ant, let it run, reswept on higher scoring map
 TODO helper that runs in a loop w/ graphql, collects games, reauths everyday
 
