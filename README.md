@@ -401,7 +401,8 @@ hyperparameters:
 - **not** _alpha_: power for the pheromone -- I removed this from
   computations to speed up processing (see the `Speed Optimization
   Ablation` section), which is not strictly equivalent even
-  post-sweeps, but gave me decent results while being faster.
+  post-sweeps, but gave me decent results while being faster
+  (allowing more iterations/ants).
 - _beta_: power for the heuristic when computing sampling weights;
 - _local_evaporation_rate_: used in local updates (from _ACO_
   definition) to disincentivize other ants from the same iteration
@@ -517,10 +518,49 @@ In our case, we have some added complexities:
   city.
 
 #### Speeding it up ⏩
-TODO profiling with xprof
-TODO masks
-TODO sets closer in memory
-TODO multithreading
+
+We might be coding in Rust, this might be relatively cheap
+processing, and we might only have 20 cities, but doing anything
+in `O(2^20 * 20^3)` (`20^2` times 20 possible starting cities)
+isn't exactly free. If we want this to work in a second, it needs
+to go _fast_.
+
+I started writing benchmarks and
+[profiling with perf](https://nnethercote.github.io/perf-book/profiling.html)
+to iterate on optimizations. The following were the most impactful,
+but see the `Speed Optimizations Ablation` section for details:
+- Represent sets of elements as a `u32` mask, with clever
+  [bit hacks](https://graphics.stanford.edu/~seander/bithacks.html#NextBitPermutation)
+  to go through all permutations with `s` bits set to 1. We can
+  then use this mask directly as an index in a contiguous array;
+- Hardcode the number of ports and tide schedule --
+  `% len(tide_schedule)` is relatively cheap in general, but in
+  a tight loop it can become a bottleneck;
+- Multithread the processing by trying multiple starting ports
+  in parallel. This doesn't require synchronization so we can
+  almost divide our processing time by the number cores we
+  run on;
+  - By running a "print the CPU info" Python bot on the server,
+    I could see that there were 4 physical (i.e. without
+    hyperthreading, since this is compute-bound processing)
+    cores available.
+- Place our data in our contiguous array in order of length of
+  subset `S`, since that matches the order in which we iterate
+  in our dynamic programming solution. This leads to memory
+  reads/writes that are closer in memory and take better
+  advantage of the CPU cache (instead of very sporadic
+  accesses when indexing by the mask as an integer directly).
+  This is a bit tricky to do right, requiring some precomputed
+  [binomials](https://en.wikipedia.org/wiki/Binomial_coefficient),
+  but I found this great idea from 
+  [this link](https://www.math.uwaterloo.ca/~bico/papers/comp_chapterDP.pdf)
+  which documented it quite well.
+  
+And with all that... It could barely fit in a second in my local
+tests! 🎉 It sometimes would go a bit over when you add up the
+graph building costs, but I also noticed before that the server
+looked like it allowed a bit over 1 second per tick (closer to 2s?),
+so maybe that's fine.
 
 #### ... Ship It? 🚢
 TODO didn't work
