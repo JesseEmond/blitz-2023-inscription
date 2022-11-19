@@ -580,7 +580,11 @@ but see the `Speed Optimizations Ablation` section for details:
   - Implemented "early exploration" (thanks to
     [this source](https://takinginitiative.wordpress.com/2011/05/02/optimizing-the-a-algorithm/),
     where a neighbor node can skip the priority queue entirely
-    if its f-score is smaller than or equal to the current one.
+    if its f-score is smaller than or equal to the current one;
+  - Change the storage of the `adjacency` matrix of the graph
+    to be `adjacency[to][from][tick_offset]`, to match the
+    access patterns of Held-Karp iterating over a fixed `to`
+    vertex in its hot loop.
 - Place our data in our contiguous array in order of length of
   subset `S`, since that matches the order in which we iterate
   in our dynamic programming solution. This leads to memory
@@ -646,10 +650,41 @@ machine to ourselves for each test!) and that we can't
 make full use of the physically available parallelism.
 
 #### Redeeming this 🩹
-TODO restrospect: spent too much time on this, should have switched to try
-     adapting simplex-based approaches
-TODO optimal solver
-TODO live evaller
+
+In retrospect here, I spent a lot of time trying to get
+Held-Karp to work in 1s. I was having fun optimizing and
+was seeing promising results locally. From a purely
+"strategic" perspective, however, it would have been best
+for me to pivot to either:
+- a fully heuristic approach (e.g.
+improve my ant solver);
+- see if it's possible to adjust existing
+  [Simplex algorithm approaches to TSP](https://www.cl.cam.ac.uk/teaching/1718/AdvAlgo/simplex_tsp.pdf)
+  to our constraints (where the cost of an edge depends
+  on the cost-so-far). For future reference for myself, I
+  found
+  [this Rust example](https://github.com/ztlpn/minilp/blob/master/examples/tsp.rs)
+  of solving the TSP with linear programming.
+
+But this wasn't lost time, this gave me a way to get
+an offline **optimal solver** to evaluate how far off
+my heuristic-based solver was doing on my collected
+set of offline games. To truly get an optimal score,
+we also need to consider the possibility of visiting
+less than 20 ports. We can do that after running
+Held-Karp by going through all subsets of ports once
+more and checking if only visiting those ports (+
+going home) would give a better score than the full
+tour.
+
+I then implemented a `live_evaler` tool that monitors
+my `games` folder and evaluates new saved games as
+they come in with an optimal solver, so that I can
+keep an eye on my "could-have-been" best score. This
+was also useful to compare to other teams on the
+leaderboard to know if my ants-based bot was worse
+than the other team's, or if I had maybe not been
+given the chance to get a higher score just yet.
 
 ### 🦾 Final Solver
 
