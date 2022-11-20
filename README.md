@@ -688,11 +688,72 @@ given the chance to get a higher score just yet.
 
 ### 🦾 Final Solver
 
-TODO held-karp N starts
-TODO go back to ant, let it run, reswept on higher scoring map
-TODO helper that runs in a loop w/ graphql, collects games, reauths everyday
+So I went back to an ants-based solver. I also tried
+Held-Karp where I only consider a few starting ports
+(that fits in a second), but on my offline set of
+games this did worse than the ants solver.
 
-TODO final score, TODO in how many runs
+I started running games in a loop, with a few minutes
+sleep between games, and this turned into a very tight
+race with the `Roach` team, and we kept passing each
+other. I eventually found maps where the optimal score
+was quite a few ticks better than my ants-based solution,
+so I reswept my ants hyperparameters on just that
+"high score potential" map and after that I found my
+ants-based score to be always very close to the optimal
+one, thankfully. 
+
+But the `Roach` team kept passing me still, and from
+interacting with the GraphQL API of the challenge I
+was able to extract how many games each team has run
+so far, to find that I was quite a bit behind (so less
+chances for high-potential maps).
+
+I changed my auto-play script to remove the sleep and
+instead interact with the GraphQL API to check when
+the game is complete (i.e. restart as soon as it
+completes), and that allowed me to get a closer score
+in the ~3800 points range.
+
+`Roach` kept getting higher scores and I was still
+behind on the number of games played, so I switched
+to playing 2 games in parallel, respecting whatever
+sleep the server suggested when we got throttled
+(sorry for any infra trouble caused, Coveo :smile:,
+apparently we overflowed the game ID column --
+oops!). I also added logic to auto-refresh my
+access token, by reusing firefox cookies for the
+OAuth2 flow with
+[browser_cookie3](https://github.com/borisbabic/browser_cookie3)
+to avoid having to manually refresh it every day
+(and lose precious hours where my bot could have
+been running due to HTTP 401s!)
+
+In the end, I ended up with a winning game:
+- with a score of `3896` points;
+- visiting 20 ports in 184 ticks;
+- luckily enough, this was also the optimal score
+  on that map.
+  
+Here is the winning game:
+
+TODO viz
+
+This barely put me in the first place on the
+leaderboard, with `Roach` right after at `3884`
+points. To put this in perspective, this is
+a difference of 2 ticks. I also went a bit
+overboard with the auto-play script (I really
+wanted to break the 3900 points range!), since
+I played a total of **18576** games in total.
+With `Roach` being a bit under 10000 games played,
+I have no doubt that they could have gotten the
+same score, too.
+
+This was super fun and I learned a ton about
+solving TSP problems, thanks Coveo for the great
+challenge, as always! (Psst, I also hear that
+[they're hiring](https://www.coveo.com/en/company/careers))
 
 ## Speed Optimizations Ablation
 
