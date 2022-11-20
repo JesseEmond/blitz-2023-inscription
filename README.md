@@ -318,7 +318,9 @@ to speed things up:
 - I did a couple more optimizations, outlined in the
   `Speed Optimization Ablation` section.
 
-TODO: graph visualization
+But we end up with a graph representation of our problem:
+
+![Graph](https://user-images.githubusercontent.com/1843555/202889263-24fd69af-5ed8-4d00-923e-91d908343e32.png)
 
 Around this time, I added a "give up" mode to my bot, that
 quickly docks the initial port twice to get 0 points and
