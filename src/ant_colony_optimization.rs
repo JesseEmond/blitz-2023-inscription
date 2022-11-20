@@ -1,16 +1,18 @@
 use arrayvec::ArrayVec;
 use log::{debug};
-use serde::{Deserialize};
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::iter;
 use std::sync::Arc;
 use rand::{Rng, SeedableRng};
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::rngs::SmallRng;
+use serde_json::{json};
 
 use crate::challenge::{Solution, eval_score};
 use crate::challenge_consts::{MAX_PORTS, TICK_OFFSETS};
 use crate::graph::{Graph, VertexId};
+use crate::pathfinding::{Pos};
 
 // Based on the documentation at:
 // https://staff.washington.edu/paymana/swarm/stutzle99-eaecs.pdf
@@ -115,8 +117,51 @@ pub struct Colony {
     pub trails: Vec<VertexTrails>,
     pub global_best: Option<Ant>,
     pub rng: SmallRng,
+
+    // Used for debugging purposes. If set, is populated & debug-logged.
+    visualization: Option<ColonyVisualization>,
 }
 
+/// Debug struct to log as JSON for visualization, contains all iterations info.
+#[derive(Serialize, Debug, Clone)]
+pub struct ColonyVisualization {
+    pub graph: GraphVisualization,
+    // Local/global best, and all ants for every steps
+    pub local_ants: Vec<AntVisualization>,
+    pub global_ants: Vec<AntVisualization>,
+    pub all_ants: Vec<Vec<AntVisualization>>,
+    // Pheromone/heuristic/weight info for every steps
+    pub weights: Vec<WeightsVisualization>,
+}
+
+/// Debug struct used for visualization of an individual ant.
+#[derive(Serialize, Debug, Clone)]
+pub struct AntVisualization {
+    pub start: VertexId,
+    pub score: i32,
+    pub path: Vec<VertexId>,
+}
+
+/// Debug struct used for visualization of the graph.
+#[derive(Serialize, Debug, Clone)]
+pub struct GraphVisualization {
+    pub vertices: Vec<Pos>,
+    // adjacency[from][to][tick_offset]
+    pub adjacency: Vec<Vec<Vec<u8>>>,
+}
+
+/// Debug struct used for visualization of pheromones, heuristics, and weights.
+#[derive(Serialize, Debug, Clone)]
+pub struct WeightsVisualization {
+    // pheromones[from][to]
+    pub pheromones: Vec<Vec<f32>>,
+    // heuristics[from][to]
+    pub min_heuristics: Vec<Vec<f32>>,
+    pub max_heuristics: Vec<Vec<f32>>,
+    // weights[from][to]
+    pub min_weights: Vec<Vec<f32>>,
+    pub max_weights: Vec<Vec<f32>>,
+}
 
 impl HyperParams {
     pub fn default_params(iterations: usize) -> Self {
@@ -350,32 +395,44 @@ impl Colony {
             VertexTrails::new(vertex_id as VertexId, &graph, &hyperparams)
         }).collect();
         let seed = hyperparams.seed;
+        let visualization: Option<ColonyVisualization> = if cfg!(feature = "visualization_dump") {
+            Some(ColonyVisualization::new(graph))
+        } else {
+            None
+        };
         Colony {
             graph: graph.clone(),
             trails: vertex_trails,
             global_best: None,
             hyperparams,
             rng: SmallRng::seed_from_u64(seed),
+            visualization,
         }
     }
 
     pub fn run(&mut self) -> Solution {
-        debug_log_graph(&self.graph);
-        debug_log_heuristics(&self.graph);
         for iter in 0..self.hyperparams.iterations {
             debug!("ACO iteration #{iter}/{total}", iter = iter + 1,
                    total = self.hyperparams.iterations);
-            debug_log_pheromones(self, iter);
-            debug_log_scores(self, iter);
             self.run_iteration();
             let best_ant = self.global_best.as_ref().expect("No solution found...?");
             debug!("  best global score: {best}", best = best_ant.score);
         }
         let best_ant = self.global_best.as_ref().expect("No solution found...?");
+        if let Some(viz) = &self.visualization {
+            debug!("[VIZ_DATA] {}", json!(viz));
+        }
         best_ant.to_solution(&self.graph)
     }
 
     fn run_iteration(&mut self) {
+        if let Some(viz) = &mut self.visualization {
+            // Note weights/pheromones before tick starts
+            viz.weights.push(WeightsVisualization::new(&self.trails,
+                                                       &self.graph,
+                                                       &self.hyperparams));
+        }
+
         self.construct_solutions();
         // Note: our path finalization logic is essentially a local search.
         self.update_trails();
@@ -386,15 +443,16 @@ impl Colony {
             .map(|_| self.construct_solution()).collect();
         let local_best = ants.iter().max_by_key(|ant| ant.score).cloned().unwrap();
         debug!("  local best score: {score}", score = local_best.score);
-        debug_log_ant(&local_best, "[LOGGING_LOCAL_BEST_ANT]");
-        for (i, ant) in ants.iter().enumerate() {
-            debug_log_ant(ant, format!("[LOGGING_ANT]{i} ").as_str());
-        }
         if self.global_best.is_none()
             || local_best.score > self.global_best.as_ref().unwrap().score {
-            self.global_best = Some(local_best);
+            self.global_best = Some(local_best.clone());
         }
-        debug_log_ant(self.global_best.as_ref().unwrap(), "[LOGGING_GLOBAL_BEST_ANT]");
+        if let Some(viz) = &mut self.visualization {
+            viz.local_ants.push(AntVisualization::new(&local_best));
+            viz.global_ants.push(AntVisualization::new(
+                    &self.global_best.as_ref().unwrap()));
+            viz.all_ants.push(ants.iter().map(AntVisualization::new).collect());
+        }
         ants
     }
 
@@ -486,73 +544,107 @@ impl Colony {
     }
 }
 
+impl ColonyVisualization {
+    fn new(graph: &Graph) -> Self {
+        ColonyVisualization {
+            graph: GraphVisualization::new(graph),
+            local_ants: Vec::new(),
+            global_ants: Vec::new(),
+            all_ants: Vec::new(),
+            weights: Vec::new(),
+        }
+    }
+}
 
-// All the following are pretty hacky log outputs, optionally parsed to produce
-// visualizations.
-fn debug_log_graph(graph: &Graph) {
-    debug!("[LOGGING_GRAPH_START_TICK]{tick}", tick = graph.start_tick);
-    debug!("[LOGGING_GRAPH_MAX_TICK]{tick}", tick = graph.max_ticks);
-    for from in 0..graph.ports.len() {
-        let from = from as VertexId;
-        let port = graph.ports[from as usize];
-        debug!("[LOGGING_GRAPH_VERTICES]{x} {y}", x = port.x, y = port.y);
-        for to in 0..graph.ports.len() {
-            let to = to as VertexId;
-            if from == to {
-                continue;
+impl GraphVisualization {
+    fn new(graph: &Graph) -> Self {
+        let mut adjacency = Vec::new();
+        for from in 0..graph.ports.len() {
+            let mut from_adj = Vec::new();
+            for to in 0..graph.ports.len() {
+                let mut offset_adj = Vec::new();
+                for offset in 0..TICK_OFFSETS {
+                    offset_adj.push(graph.cost(offset as u8,
+                                               from as VertexId,
+                                               to as VertexId));
+                }
+                from_adj.push(offset_adj);
             }
-            let costs: Vec<u8> = (0..TICK_OFFSETS).map(
-                |t| graph.cost(t as u8, from, to)).collect();
-            debug!("[LOGGING_GRAPH_EDGES]{from} {to} {costs:?}");
+            adjacency.push(from_adj);
+        }
+        GraphVisualization {
+            vertices: graph.ports.to_vec(),
+            adjacency,
         }
     }
 }
-fn debug_log_pheromones(colony: &Colony, iter: usize) {
-    for from in 0..colony.graph.ports.len() {
-        let from = from as VertexId;
-        let pheromones = colony.trails[from as usize].pheromones.clone();
-        debug!("[LOGGING_PHEROMONES]{iter} {from} {pheromones:?}");
-    }
-}
-fn debug_log_ant(ant: &Ant, tag: &str) {
-    debug!("{tag}{start} {path:?} {score}", start = ant.start,
-          path = ant.path, score = ant.score);
-}
-fn debug_log_heuristics(graph: &Graph) {
-    for from in 0..graph.ports.len() {
-        let from = from as VertexId;
-        for to in 0..graph.ports.len() {
-            let to = to as VertexId;
-            if from == to {
-                continue;
-            }
-            let dists: Vec<u8> = (0..TICK_OFFSETS).map(
-                |t| graph.cost(t as u8, from, to)).collect();
-            let min = 1.0 / (*dists.iter().max().unwrap() as f32);
-            let max = 1.0 / (*dists.iter().min().unwrap() as f32);
-            debug!("[LOGGING_HEURISTIC]{min} {max}");
+
+impl AntVisualization {
+    fn new(ant: &Ant) -> Self {
+        AntVisualization {
+            start: ant.start,
+            score: ant.score,
+            path: ant.path.to_vec(),
         }
     }
 }
-fn debug_log_scores(colony: &Colony, iter: usize) {
-    for from in 0..colony.graph.ports.len() {
-        let from = from as VertexId;
-        for to in 0..colony.graph.ports.len() {
-            let to = to as VertexId;
-            if from == to {
-                continue;
+
+impl WeightsVisualization {
+    fn new(trails: &Vec<VertexTrails>, graph: &Graph,
+           hyperparams: &HyperParams) -> Self {
+        // // pheromones[from][to]
+        // pub pheromones: Vec<Vec<f32>>,
+        // // heuristics[from][to]
+        // pub min_heuristics: Vec<Vec<f32>>,
+        // pub max_heuristics: Vec<Vec<f32>>,
+        // // weights[from][to]
+        // pub min_weights: Vec<Vec<f32>>,
+        // pub max_weights: Vec<Vec<f32>>,
+        let mut pheromones = Vec::new();
+        let mut min_heuristics = Vec::new();
+        let mut max_heuristics = Vec::new();
+        let mut min_weights = Vec::new();
+        let mut max_weights = Vec::new();
+        for from in 0..graph.ports.len() {
+            let mut from_pheromones = Vec::new();
+            let mut from_min_heuristics = Vec::new();
+            let mut from_max_heuristics = Vec::new();
+            let mut from_min_weights: Vec<f32> = Vec::new();
+            let mut from_max_weights: Vec<f32> = Vec::new();
+            for to in 0..graph.ports.len() {
+                from_pheromones.push(trails[from].pheromones[to]);
+                let beta = hyperparams.heuristic_power;
+                // Undo precomputed eta pow computation to recover eta.
+                let heuristics = (0..TICK_OFFSETS).map(
+                    |t| trails[from].eta_pow(t as u8, to as u8).powf(1f32 / beta));
+                let weights = (0..TICK_OFFSETS).map(
+                    |t| trails[from].weights(t as u16)[to]);
+                from_min_heuristics.push(
+                    heuristics.clone()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                    .unwrap());
+                from_max_heuristics.push(
+                    heuristics
+                    .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                    .unwrap());
+                from_min_weights.push(
+                    weights.clone()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                    .unwrap());
+                from_max_weights.push(
+                    weights
+                    .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                    .unwrap());
             }
-            let distances: Vec<u8> = (0..TICK_OFFSETS).map(
-                |t| colony.graph.cost(t as u8, from, to)).collect();
-            let min_dist = *distances.iter().min().unwrap();
-            let max_dist = *distances.iter().max().unwrap();
-            let tau = colony.trails[from as usize].pheromones[to as usize];
-            let beta = colony.hyperparams.heuristic_power;
-            let min_eta = 1.0 / (max_dist as f32);
-            let max_eta = 1.0 / (min_dist as f32);
-            let min_weight = tau * min_eta.powf(beta);
-            let max_weight = tau * max_eta.powf(beta);
-            debug!("[LOGGING_WEIGHTS]{iter} {from} {to} {min_weight} {max_weight}");
+            pheromones.push(from_pheromones);
+            min_heuristics.push(from_min_heuristics);
+            max_heuristics.push(from_max_heuristics);
+            min_weights.push(from_min_weights);
+            max_weights.push(from_max_weights);
+        }
+        WeightsVisualization {
+            pheromones, min_heuristics, max_heuristics,
+            min_weights, max_weights
         }
     }
 }

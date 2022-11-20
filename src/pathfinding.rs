@@ -2,6 +2,7 @@ use arrayvec::ArrayVec;
 use log::{info};
 use priority_queue::PriorityQueue;
 use rustc_hash::{FxHashMap, FxHashSet};
+use serde::{Serialize};
 use std::cmp::Reverse;
 use std::iter;
 
@@ -9,7 +10,7 @@ use crate::challenge_consts::{HEIGHT, TICK_OFFSETS, WIDTH};
 use crate::game_interface::{Map, Position};
 
 // TODO: consider packing as u32?
-#[derive(Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Copy, Clone)]
+#[derive(Serialize, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Copy, Clone)]
 pub struct Pos {
     pub x: u16,
     pub y: u16,

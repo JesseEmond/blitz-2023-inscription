@@ -127,6 +127,7 @@ ants = parse_ants()
 
 pheromone_min, pheromone_max = min(p for pheros in pheromones for p in pheros), max(p for pheros in pheromones for p in pheros)
 heuristic_min, heuristic_max = min(hmin for hmin, _ in heuristics), max(hmax for _, hmax in heuristics)
+# TODO: viz with normalized weights!
 weights_min, weights_max = min(wmin for ws in weights for wmin, _ in ws), max(wmax for ws in weights for _, wmax in ws)
 
 # Flip y to match what we see visually -- (0, 0) is top left in the game.

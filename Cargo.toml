@@ -12,6 +12,10 @@ opt-level = 3
 # panic = "abort"
 # debug = true  # Use only when profiling
 
+[features]
+
+visualization_dump = []
+
 [[bin]]
 name = "application" # Don't change this, our backend expects a fixed binary path
 path = "src/main.rs"
