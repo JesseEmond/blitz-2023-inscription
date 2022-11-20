@@ -1,4 +1,3 @@
-// TODO: rename to ant_system.rs (+ other references)
 use arrayvec::ArrayVec;
 use log::{debug};
 use serde::{Deserialize};
