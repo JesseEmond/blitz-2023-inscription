@@ -180,12 +180,7 @@ for i in range(num_ticks):
   axs[0,0].axis('off')
 
   # Show the pheromones
-  # Display pheromones as a mix of local normalization and global to be able to
-  # see _some_ of the movement.
-  local_max_pheromones = max(e.pheromones for e in edges)
-  edge_color = [(1, 0, 0,
-                 0.5 * e.pheromones / pheromone_max + 0.5 * e.pheromones / local_max_pheromones)
-                for e in edges]
+  edge_color = [(1, 0, 0, e.pheromones / pheromone_max) for e in edges]
   axs[0,1].clear()
   nx.draw_networkx(G, pos=pos, ax=axs[0,1], edge_color=edge_color, with_labels=False)
   axs[0,1].set_title(f"Pheromones (iteration #{i})")
