@@ -269,7 +269,7 @@ impl Ant {
         self.tick + (edge_cost as u16) + 1 < graph.max_ticks && !seen
     }
 
-    // // Add a path back home to our path, if we should, potentially truncating.
+    // Add a path back home to our path, if we should, potentially truncating.
     fn finalize_path(&mut self, graph: &Graph) {
         let mut best_score = self.compute_score(graph, /*simulate_to_end=*/true);
         let mut go_home_at_index: Option<usize> = None;
