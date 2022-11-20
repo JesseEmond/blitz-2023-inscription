@@ -552,7 +552,17 @@ pick an optimizer, and let it explore the hyperparameter
 space. In the end, I stuck to random search, but this is
 easy to change and extend with your own search algorithm.
 
-TODO sweep viz
+To help out when picking parameter ranges, I also made
+a tool to show rudimentary plots of scores obtained vs.
+parameter values, to spot ranges that are too narrow or
+too wide:
+
+![SweepAnalysis](https://user-images.githubusercontent.com/1843555/202930568-c71cd220-7a3e-4680-8f90-7de2a7799a2a.png)
+
+This didn't end up being super useful, but as you can
+see in the image above, small values of `beta` were
+hurting, so I was able to narrow that sweep range at
+least.
 
 I could have added more tuning here -- there are other
 ant system variants or settings that can be useful (e.g.
