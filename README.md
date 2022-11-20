@@ -502,11 +502,36 @@ I implemented this and the results were somewhat reasonable, but
 the behavior felt very opaque -- when it's doing poorly, is it
 because of a bug, or because of bad hyperparameters? So I spent
 some time on visualization tools to understand what the ants
-behavior was like. Here is what is looks like on an example game:
+behavior was like. Here is what is looks like on an example game,
+with some hyperparameters (note: not the exact same ones I ended
+up using):
 
-TODO ant visualization
+![AntColonyOptimization](https://user-images.githubusercontent.com/1843555/202929678-0232e18e-fa16-4965-b585-666b990c23d7.gif)
 
-TODO describe the visuals
+What is displayed:
+- The _top left_ shows the start/path of the best ants, both locally
+  (current iteration, shown in _blue_) and globally (seen so far,
+  shown in _green_ and drawn on top of everything);
+  - We see that the local best ant tends to not deviate much from
+    the global best, maybe this set of hyperparams would benefit
+    from more exploration.
+- The _middle left_ shows the heuristics (`1/distance`) between
+  nodes, this ideologically represents the "smell" of an ant of its
+  neighboring options (closer = better heuristic). Because we have
+  10 tick offsets and thus 10 path options for each edge, here I'm
+  just showing the max heuristic value of possible tide offsets per
+  node.
+- The _bottom left_ shows what paths the ants in the iteration took,
+  with thicker lines representing more frequented edges. We see that
+  the exploration is high early on, but then shifts to exploitation
+  of the best path found so far;
+  - Again, maybe those hyperparameters would benefit from more
+    exploration.
+- The _top right_ shows the pheromone trails that are left by the
+  best ant, that slowly evaporate with time.
+- The _two bottom right_ graphs show the combined heuristic and
+  pheromone values turned to weights, which are directly used to
+  make a probability distribution when sampling moves.
 
 Next, to pick a good set of hyperparameters, I implemented a
 couple of extra tools:
