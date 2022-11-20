@@ -1,20 +1,74 @@
 # Blitz 2023 Registration - /dev/null
 
-TODO prev chals
-TODO troll last year
-TODO this chal
+Two years ago, we were [hardcoding an HTTP server in C++ and reading/writing ints
+_fast_](https://github.com/JesseEmond/blitz-2021-chal). Last year, we were
+[packing tetrominoes](https://github.com/JesseEmond/blitz-2022-inscription) with
+the added fun of msanfacon@ pretending he was participating and beating us on the
+leaderboard (spoiler alert -- he was changing his score in the database).
+
+For this year's [Coveo Blitz](https://2023.blitz.codes/) registration challenge,
+the [NP-hard](https://en.wikipedia.org/wiki/NP-hardness) problem of choice was
+the [Traveling Salesperson Problem](https://en.wikipedia.org/wiki/Travelling_salesman_problem)!
 
 ## Summary
 
-TODO summarize
-TODO challenge
-TODO process
-TODO results
+Our task was to write a bot that controls a boat that goes from port to port to
+sell things. It is a tick-based game where we control individual movements of
+our boat, with the added navigation challenge of the tides changing, making
+the navigability of tiles change through time (and so also the shortest paths
+between our ports!) We get points for visiting more ports, a big bonus for
+looping back to our origin port, and lose points the longer we take.
+
+Visiting as many (all?) ports (cities?), as fast as possible, returning to the
+first one, selling things...
+[Isn't there a movie about this?](https://en.wikipedia.org/wiki/Travelling_Salesman_(2012_film))
+
+Here are the high level steps of how I approached this year's Blitz:
+- Started in Python, with a greedy bot that tries to go in a straight line
+  to the next port in a random order, with no pathfinding, ignoring the map
+  & tides, to get used to the challenge;
+- This often would just get stuck, unable to move, and give _very_ negative
+  scores:
+  > I didn't know it went this far into the negatives
+  >
+  > -- Andy de Montréal
+- Implemented pathfinding, ignoring tides for now, to get _some_ positive
+  score;
+- Wrote a local version of the server, to iterate faster;
+- Changed the bot to pick the nearest neighbor unseen port, also picking
+  the best starting port by simulating each one;
+- Modified my pathfinding to take the tide schedule into account to unlock
+  cool shortcuts.
+
+That gave a decent score on the leaderboard. It's around that time that I
+noticed the team `Roach` quickly matching and passing my scores, and I have
+to admit that with
+[Marc's trolling from last year](https://github.com/JesseEmond/blitz-2022-inscription),
+I had _multiple_ moments of paranoia where I was questioning whether this was
+Marc playing in the database once more... :) But he didn't this time!
+
+I continued working on the bot:
+- Rewrote it in Rust;
+- Changed my pathfinding to find the shortest path from one port to _all_
+  other ports, for _every_ possible tick offset in the tide schedule;
+- Used this to represent the map as a graph instead, to treat this more
+  as a traditional Traveling Salesperson Problem;
+- Explored solvers that solve the _TSP_ exactly, and also heuristic
+  approaches based on ants!?
+- Ran a _lot_ of games to try and get a "good" map to score high points.
+  
+I ended in first place on the leaderboard with a score of **3896** points,
+very closely followed by `Roach` with 3884 points, which is a mere 2 ticks
+difference in our highest scoring game -- effectively a few rolls of the
+dice apart.
+
+I learned a lot about solving TSPs and effective optimizations to apply
+to the solvers, and the following write-up documents what I learned.
 
 ## Write-Up
 
-The following is a description of the challenge and how I approached it. For
-code structure documentation, jump to the end.
+_The following is a description of the challenge and how I approached it. For
+code structure documentation, jump to the end._
 
 ### 🚩 Challenge
 
@@ -103,7 +157,7 @@ https://user-images.githubusercontent.com/1843555/202344987-9ca0679c-5819-477a-9
 
 To give an idea of the range, here is the distribution of optimal scores for 100
 20-port games assigned to us by the server:
-
+  
 ![optimal score distribution](https://user-images.githubusercontent.com/1843555/202337764-ce9662e0-ff0a-424e-9349-cf21eefa25da.png)
 
 Note that this is showing the optimal score, too (best case scenario), and that
@@ -733,7 +787,9 @@ In the end, I ended up with a winning game:
 - with a score of `3896` points;
 - visiting 20 ports in 184 ticks;
 - luckily enough, this was also the optimal score
-  on that map.
+  on that map;
+- it was the highest possible optimal score I've
+  observed in all games I collected.
   
 Here is the winning game:
 
@@ -753,7 +809,7 @@ same score, too.
 This was super fun and I learned a ton about
 solving TSP problems, thanks Coveo for the great
 challenge, as always! (Psst, I also hear that
-[they're hiring](https://www.coveo.com/en/company/careers))
+[they're hiring](https://www.coveo.com/en/company/careers).)
 
 ## Speed Optimizations Ablation
 
