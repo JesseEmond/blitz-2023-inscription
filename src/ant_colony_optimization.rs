@@ -532,6 +532,7 @@ impl Colony {
         // Global trail update
         // TODO: sometimes pick local best?
         let best = self.global_best.as_ref().expect("No global best at update time!");
+        // TODO: probably want a hyperparam for this 1.0, act as a multiplier.
         let add = 1.0 / (best.tick as f32);
 
         let pheromone_add = self.hyperparams.evaporation_rate * add;
