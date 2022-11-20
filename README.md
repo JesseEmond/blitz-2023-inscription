@@ -850,14 +850,34 @@ challenge, as always! (Psst, I also hear that
 
 ## Speed Optimizations Ablation
 
-### Benchmarks
+This section breaks down various optimizations that I made
+throughout the challenge, and the impact that they had.
+Every optimization is incremental to the previous one, and
+the relative speed-ups are in relation to the previous row.
 
-TODO which ones
+I evaluate the optimizations with benchmarks on a fixed
+game:
+- Creating a graph (pathfinding);
+- Running the Ant Colony Optimization solver;
+- Running the Held-Karp solver for all starts.
+
+Because these are expensive operations, I override the
+benchmark sample size to a small amount so that this can
+run in a reasonable time, with the caveat that the
+results can be pretty noisy.
+
+The listed optimizations are not in the same order that I
+added them during the challenge, but to be able to get an
+understanding of how each contributed to the final speed,
+I re-implemented "simple" versions of all operations, and
+gradually re-introduced the same optimizations in a branch
+called `optimization-ablation`, if you'd like to look at
+the incremental changes.
 
 ### Pathfinding Optimizations
 TODO
 
-### Ant System Optimizations
+### Ant Colony Optimizations
 TODO
 
 ### Held-Karp Optimizations
