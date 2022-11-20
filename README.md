@@ -737,7 +737,7 @@ In the end, I ended up with a winning game:
   
 Here is the winning game:
 
-TODO viz
+https://user-images.githubusercontent.com/1843555/202878765-ccdfe79c-b98c-46a0-907e-d3f90da75cef.mp4
 
 This barely put me in the first place on the
 leaderboard, with `Roach` right after at `3884`
