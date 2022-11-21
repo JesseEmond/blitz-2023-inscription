@@ -887,7 +887,7 @@ final ones on the graph creation benchmark gives a
 **97%** relative improvement in compute time
 (1.74s -> 58ms), i.e. it is **~30x faster**.
 
-The list of optimizations applied are the following:
+The optimizations are:
 - [Use `FxHashMap`](https://nnethercote.github.io/perf-book/hashing.html)
   for `came_from`/`cost_so_far` storage;
 - Precompute tile neighbors for all tick offsets;
@@ -902,13 +902,32 @@ The list of optimizations applied are the following:
   f-score is <= the current one;
 - Use a heuristic based on min
   [Chebyshev distance](https://en.wikipedia.org/wiki/Chebyshev_distance)
-  of all targets, reprioritize queue when a goal is found;
+  of all targets, reprioritize queue when a goal is found.
 
 TODO(emond): Include table of relative optimization
 ablation, adding one at a time incrementally
 
 ### Ant Colony Optimizations
-TODO
+Comparing incremental improvements on `simple_ant_colony_optimization.rs`
+vs. `ant_colony_optimization.rs`.
+
+Going from the non-optimized "simple" version to the
+final one on the ACO benchmark gives a **73%**
+relative improvement in compute time (564ms -> 151ms),
+i.e. it is **~3.7x faster**.
+
+The optimizations are:
+- Remove `alpha` hyperparameter (power for pheromones), to avoid frequent
+  `powf`s. This does change behavior, but after resweeping it looks like
+  this was okay to do without losing points;
+- Make use of continuous memory (`ArrayVec`s) for pheromones, ant
+  storage, etc.;
+- Store ant `seen` ports as a `u64` mask;
+- Precompute heuristics and `eta ^ beta` once to avoid `powf`s;
+- Use a fixed weight array with values forced to 0s for invalid choices,
+  instead of building options on the fly and sampling on those.
+- Cache weight computations for fast lookup in sampling, update when
+  updating trails.
 
 ### Held-Karp Optimizations
 TODO
