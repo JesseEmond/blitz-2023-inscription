@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use blitz_bot::game_interface::{GameTick};
 use blitz_bot::graph::{Graph};
+use blitz_bot::simple_graph::{SimpleGraph};
 use blitz_bot::solvers::{AntColonyOptimizationSolver, ExactTspSolver, Solver};
 
 
@@ -22,9 +23,15 @@ fn make_game() -> Arc<GameTick> {
 
 fn bench_graph_creation(c: &mut Criterion) {
     let game = make_game();
-    c.bench_function("graph_creation", |b| b.iter(|| {
+    let mut group = c.benchmark_group("graph_creation");
+    group.bench_function("simple pathfinding&graph", |b| b.iter(|| {
+        SimpleGraph::new(&game)
+    }));
+    group.bench_function("optimized pathfinding&graph", |b| b.iter(|| {
         Graph::new(&game)
     }));
+    group.finish();
+
 }
 
 fn bench_ant_colony_optimization(c: &mut Criterion) {
