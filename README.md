@@ -871,17 +871,49 @@ added them during the challenge, but to be able to get an
 understanding of how each contributed to the final speed,
 I re-implemented "simple" versions of all operations, and
 gradually re-introduced the same optimizations in a branch
-called `optimization-ablation`, if you'd like to look at
-the incremental changes.
+called `optimization-ablation` after-the-fact, if you'd
+like to look at the incremental changes. TODO(emond): this
+is not done yet, I just have the before/final numbers for
+now.
 
 ### Pathfinding Optimizations
-TODO
+
+Comparing incremental improvements on `simple_graph.rs`
+and `simple_pathfinding.rs` vs. `graph.rs` and
+`pathfinding.rs`.
+
+Going from the non-optimized "simple" versions to the
+final ones on the graph creation benchmark gives a
+**97%** relative improvement in compute time
+(1.74s -> 58ms), i.e. it is **~30x faster**.
+
+The list of optimizations applied are the following:
+- [Use `FxHashMap`](https://nnethercote.github.io/perf-book/hashing.html)
+  for `came_from`/`cost_so_far` storage;
+- Precompute tile neighbors for all tick offsets;
+- Hardcode tick offsets/widths/heights as constants;
+- Store pre-computed neighbors in contiguous memory where
+  possible (`ArrayVec`, arrays);
+- Represent `(position, wait)` state as a packed `u32`;
+- Multithread on 3 cores the pathfinding from different
+  starting positions;
+- Do [early exploration](https://takinginitiative.wordpress.com/2011/05/02/optimizing-the-a-algorithm/),
+  where neighbor nodes can skip the priority queue if their
+  f-score is <= the current one;
+- Use a heuristic based on min
+  [Chebyshev distance](https://en.wikipedia.org/wiki/Chebyshev_distance)
+  of all targets, reprioritize queue when a goal is found;
+
+TODO(emond): Include table of relative optimization
+ablation, adding one at a time incrementally
 
 ### Ant Colony Optimizations
 TODO
 
 ### Held-Karp Optimizations
 TODO
+
+TODO: remember to try/mention graph reordering, `get_unchecked` cost
 
 ## Code Overview
 
