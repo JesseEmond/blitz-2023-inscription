@@ -184,6 +184,21 @@ impl SimplePathfinder {
         }
         out
     }
+
+    fn _verify_path(&self, path: &Path, tick: u16) {
+        let mut tick = tick;
+        for i in 1..path.steps.len() {
+            let from = path.steps[i - 1];
+            let to = path.steps[i];
+            if from != to {  // waiting on land is fine
+                assert!(self.grid.navigable(&from, tick),
+                        "Sailing from ground {:?}->{:?}", from, to);
+                assert!(self.grid.navigable(&to, tick),
+                        "Sailing to ground {:?}->{:?}", from, to);
+            }
+            tick += 1;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -233,6 +248,7 @@ mod tests {
                         fast_offset_paths[offset].cost,
                         "path from {:?} to {:?} offset {}",
                         start, target, offset);
+                    slow._verify_path(&slow_offset_paths[offset], offset as u16);
                 }
             }
         }

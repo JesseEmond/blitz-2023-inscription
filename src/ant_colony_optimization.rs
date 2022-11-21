@@ -331,6 +331,7 @@ impl VertexTrails {
             }).collect()
         }).collect();
 
+        // TODO: this should have + min_pheromones
         let base_pheromones = hyperparams.pheromones_init_ratio * (
             hyperparams.max_pheromones - hyperparams.min_pheromones);
 

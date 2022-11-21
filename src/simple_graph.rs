@@ -70,6 +70,14 @@ impl SimpleGraph {
     pub fn cost(&self, tick_offset: u8, from: VertexId, to: VertexId) -> Cost {
         self.adjacency[from as usize][to as usize][tick_offset as usize]
     }
+
+    pub fn path(&self, tick_offset: u8, from: VertexId, to: VertexId) -> &Path {
+        &self.paths[from as usize][to as usize][tick_offset as usize]
+    }
+
+    pub fn tick_offset(&self, tick: u16) -> u8 {
+        ((tick as usize) % self.tick_offsets) as u8
+    }
 }
 
 #[cfg(test)]

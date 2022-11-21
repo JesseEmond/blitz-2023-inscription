@@ -93,7 +93,7 @@ pub struct ExactTspSomeStartsSolver {
 // It runs iterations of sampling and simulating "ants" that leave pheromones on
 // good paths.
 pub struct AntColonyOptimizationSolver {
-    hyperparams: HyperParams,
+    pub hyperparams: HyperParams,
 }
 
 // Solver that solves the TSP on the graph using Held-Karp for each possible
