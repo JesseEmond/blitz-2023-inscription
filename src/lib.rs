@@ -11,4 +11,6 @@ pub mod held_karp;
 pub mod macro_ai;
 pub mod micro_ai;
 pub mod pathfinding;
+pub mod simple_graph;
+pub mod simple_pathfinding;
 pub mod solvers;

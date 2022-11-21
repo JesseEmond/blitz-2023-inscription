@@ -35,7 +35,7 @@ type Neighbors = ArrayVec<Pos, 8>;
 
 pub struct Grid {
     tide_schedule: [u8; TICK_OFFSETS],
-    // topology [y][x]
+    // topology[y][x]
     topology: [[u8; WIDTH]; HEIGHT],
     // neighbors[tick_offset][y][x]
     neighbors: Vec<[[Neighbors; WIDTH]; HEIGHT]>,
@@ -158,7 +158,7 @@ impl std::fmt::Debug for State {
 
 type CameFrom = FxHashMap<State, State>;
 type CostSoFar = FxHashMap<State, u16>;
-type Targets = FxHashSet<Pos>;
+pub type Targets = FxHashSet<Pos>;
 
 fn heuristic(src: &Pos, targets: &Targets) -> u16 {
     targets.iter().map(|target| chebyshev_distance(src, target)).min().unwrap()
