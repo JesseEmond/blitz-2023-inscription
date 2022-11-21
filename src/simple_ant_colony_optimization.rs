@@ -218,51 +218,33 @@ impl Colony {
     }
 
     fn sample_option(&mut self, ant: &Ant) -> Option<VertexId> {
-        let weights: Vec<f32> = (0..self.graph.ports.len()).map(|to| {
-            let to = to as VertexId;
+        let options: Vec<VertexId> = (0..self.graph.ports.len())
+            .map(|v| v as VertexId)
+            .filter(|&to| {
+                let cost = self.graph.cost(self.graph.tick_offset(ant.tick),
+                                           ant.current, to);
+                to != ant.current && ant.valid_option(cost, to, &self.graph)
+            }).collect();
+        let weights: Vec<f32> = options.iter().map(|&to| {
             let alpha = self.hyperparams.pheromones_power;
             let beta = self.hyperparams.base.heuristic_power;
             let distance = self.graph.cost(
                 self.graph.tick_offset(ant.tick), ant.current, to);
             let eta = 1.0 / (distance as f32);
             let pheromones = self.pheromones[ant.current as usize][to as usize];
-            if ant.current != to && ant.valid_option(distance, to, &self.graph) {
-                pheromones.powf(alpha) * eta.powf(beta)
-            } else {
-                0.0
-            }
+            pheromones.powf(alpha) * eta.powf(beta)
         }).collect();
-        let rand_valid_option = |rng: &mut SmallRng| -> Option<VertexId> {
-            let all_options: Vec<VertexId> = (0..self.graph.ports.len())
-                .map(|v| v as VertexId)
-                .filter(|&to| {
-                    let cost = self.graph.cost(self.graph.tick_offset(ant.tick),
-                                               ant.current, to);
-                    ant.current != to && ant.valid_option(cost, to, &self.graph)
-                }).collect();
-            if all_options.is_empty() {
-                None
-            } else {
-                Some(all_options[rng.gen_range(0..all_options.len())])
-            }
-        };
-        if self.rng.gen::<f32>() < self.hyperparams.base.exploitation_probability {
-            let to = weights.iter().enumerate()
+        if options.is_empty() {
+            None
+        } else if self.rng.gen::<f32>() < self.hyperparams.base.exploitation_probability {
+            let idx = weights.iter().enumerate()
                 .max_by(|(_, w1), (_, w2)| w1.partial_cmp(w2).unwrap_or(Ordering::Equal))
-                .map(|(idx, _)| idx).unwrap() as VertexId;
-            let cost = self.graph.cost(self.graph.tick_offset(ant.tick),
-                                       ant.current, to);
-            if ant.valid_option(cost, to, &self.graph) {
-                Some(to)
-            } else {
-                rand_valid_option(&mut self.rng)
-            }
+                .map(|(idx, _)| idx).unwrap();
+            Some(options[idx])
         } else if let Ok(distribution) = WeightedIndex::new(weights) {
-            let options: Vec<VertexId> = (0..self.graph.ports.len())
-                .map(|v| v as VertexId).collect();
             Some(options[distribution.sample(&mut self.rng)])
         } else {
-            rand_valid_option(&mut self.rng)
+            Some(options[self.rng.gen_range(0..options.len())])
         }
     }
 

@@ -379,12 +379,14 @@ impl VertexTrails {
     pub fn weights(&self, tick: u16) -> &EdgeWeights {
         let offset = (tick as usize) % TICK_OFFSETS;
         unsafe {
+            // TODO: verify if get_unchecked really helped...?
             self.offset_trail_weights.get_unchecked(offset)
         }
     }
 
     fn eta_pow(&self, tick_offset: u8, to: VertexId) -> f32 {
         unsafe {
+            // TODO: verify if get_unchecked really helped...?
             *self.eta_pows.get_unchecked(tick_offset as usize).get_unchecked(to as usize)
         }
     }
@@ -464,6 +466,7 @@ impl Colony {
             let i = i as VertexId;
             let cost = self.graph.cost(ant.tick_offset, ant.current, i);
             let valid = i != ant.current && ant.valid_option(cost, i, &self.graph);
+            // TODO: verify if this multiplication really helped vs. if...?
             w * ((valid as i32) as f32)
         });
         let rand_valid_option = |rng: &mut SmallRng| -> Option<VertexId> {
