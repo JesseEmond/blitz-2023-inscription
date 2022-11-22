@@ -301,10 +301,10 @@ from our ports:
   depends on the tick offset we are at on the source vertex.
 
 But this gets expensive: 10 tick offsets, 20 vertices,
-190 edges (fully connected graph), that's 1900 total shortest
-paths if we do them pairwise. If we want to fit this in 1
-second and do processing on that graph afterwards, we need
-to speed things up:
+380 edges (fully connected directed graph), that's
+3800 total shortest paths if we do them pairwise. If we
+want to fit this in 1 second and do processing on that
+graph afterwards, we need to speed things up:
 - I rewrote the bot in Rust;
 - I changed my `A*` implementation to support finding the
   shortest paths to _all_ targets at once, instead of the
@@ -928,11 +928,41 @@ The optimizations are:
   instead of building options on the fly and sampling on those.
 - Cache weight computations for fast lookup in sampling, update when
   updating trails.
+  
+TODO(emond): Include table of relative optimization
+ablation, adding one at a time incrementally
 
 ### Held-Karp Optimizations
-TODO
+Comparing incremental improvements on `simple_held_karp.rs` vs.
+`held_karp.rs`.
 
-TODO: remember to try/mention graph reordering, `get_unchecked` cost
+Going from the non-optimized "simple" version to the final one
+on the Held-Karp benchmark gives a **99%** relative
+improvement in compute time (110.1s -> 1.1s), i.e. it is
+**100x fater**.
+
+The optimizations are:
+- Store `g` and `p` values in a contiguous array instead of a
+  `HashMap` (index by `mask` treated as an integer);
+- Generate mask combinations of same size with
+  [bit hacks](https://graphics.stanford.edu/~seander/bithacks.html#NextBitPermutation);
+- In the flattened contiguous array, store masks of similar
+  size (number of elements in the set) closer in memory, for
+  better caching (optimization
+  [from here](https://www.math.uwaterloo.ca/~bico/papers/comp_chapterDP.pdf)).
+- Multithreading, computing multiple start options in parallel;
+- Change graph layout to be `adjacency[to][from][offset]` to
+  follow access patterns from Held-Karp more closely;
+- When computing index in flattened array in hot loop, compute
+  offset from previous value instead of recomputing full expression;
+- Use arrays/`ArrayVec`s where possible, use challenge consts for
+  dims/loops;
+- Precompute "translation" from vertex index to
+  index-without-start;
+- Use `get_unchecked` in graph adjacency cost accesses.
+
+TODO(emond): Include table of relative optimization
+ablation, adding one at a time incrementally
 
 ## Code Overview
 
