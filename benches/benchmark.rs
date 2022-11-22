@@ -6,6 +6,7 @@ use std::sync::Arc;
 use blitz_bot::game_interface::{GameTick};
 use blitz_bot::graph::{Graph};
 use blitz_bot::simple_ant_colony_optimization::{SimpleAntColonyOptimizationSolver};
+use blitz_bot::simple_held_karp::{SimpleExactTspSolver};
 use blitz_bot::simple_graph::{SimpleGraph};
 use blitz_bot::solvers::{AntColonyOptimizationSolver, ExactTspSolver, Solver};
 
@@ -38,7 +39,6 @@ fn bench_ant_colony_optimization(c: &mut Criterion) {
     let game = make_game();
     let simple_graph = Arc::new(SimpleGraph::new(&game));
     let graph = Arc::new(Graph::new(&game));
-
     let mut group = c.benchmark_group("ant_colony_optimization");
     group.bench_function("simple ACO", |b| b.iter(|| {
         let mut solver = SimpleAntColonyOptimizationSolver::default();
@@ -53,11 +53,18 @@ fn bench_ant_colony_optimization(c: &mut Criterion) {
 
 fn bench_held_karp(c: &mut Criterion) {
     let game = make_game();
+    let simple_graph = Arc::new(SimpleGraph::new(&game));
     let graph = Arc::new(Graph::new(&game));
-    let mut solver = ExactTspSolver{};
-    c.bench_function("held_karp", |b| b.iter(|| {
+    let mut group = c.benchmark_group("held_karp");
+    group.bench_function("simple held_karp", |b| b.iter(|| {
+        let mut solver = SimpleExactTspSolver{};
+        solver.do_solve(&simple_graph)
+    }));
+    group.bench_function("optimized held_karp", |b| b.iter(|| {
+        let mut solver = ExactTspSolver{};
         solver.do_solve(&graph)
     }));
+    group.finish();
 }
 
 criterion_group!{

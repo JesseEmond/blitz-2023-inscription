@@ -13,5 +13,6 @@ pub mod micro_ai;
 pub mod pathfinding;
 pub mod simple_ant_colony_optimization;
 pub mod simple_graph;
+pub mod simple_held_karp;
 pub mod simple_pathfinding;
 pub mod solvers;
