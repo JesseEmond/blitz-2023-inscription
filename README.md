@@ -316,7 +316,7 @@ graph afterwards, we need to speed things up:
     list and reprioritize the priority queue with updated
     heuristic values;
 - I did a couple more optimizations, outlined in the
-  `Speed Optimization Ablation` section.
+  `Speed Optimization Breakdown` section.
 
 But we end up with a graph representation of our problem:
 
@@ -475,7 +475,7 @@ hyperparameters that control behavior:
   option instead of sampling;
 - **not** _alpha_: power for the pheromone -- I removed this from
   computations to speed up processing (see the `Speed Optimization
-  Ablation` section), which is not strictly equivalent to having it
+  Breakdown` section), which is not strictly equivalent to having it
   if we resweep _beta_, but this gave me decent results while being
   faster (allowing more iterations/ants).
 - _beta_: power for the heuristic when computing sampling weights;
@@ -637,7 +637,7 @@ to go _fast_.
 I started writing benchmarks and
 [profiling with perf](https://nnethercote.github.io/perf-book/profiling.html)
 to iterate on optimizations. The following were the most impactful,
-but see the `Speed Optimizations Ablation` section for details:
+but see the `Speed Optimizations Breakdown` section for details:
 - Represent sets of elements as a `u32` mask, with clever
   [bit hacks](https://graphics.stanford.edu/~seander/bithacks.html#NextBitPermutation)
   to go through all permutations with a fixed amount of bits set
@@ -848,7 +848,7 @@ solving TSP problems, thanks Coveo for the great
 challenge, as always! (Psst, I also hear that
 [they're hiring](https://www.coveo.com/en/company/careers).)
 
-## Speed Optimizations Ablation
+## Speed Optimizations Breakdown
 
 This section breaks down various optimizations that I made
 throughout the challenge, and the impact that they had.
@@ -870,8 +870,8 @@ The listed optimizations are not in the same order that I
 added them during the challenge, but to be able to get an
 understanding of how each contributed to the final speed,
 I re-implemented "simple" versions of all operations, ~and
-gradually re-introduced the same optimizations in a branch
-called `optimization-ablation` after-the-fact, if you'd
+gradually re-introduced the same optimizations in branches
+called `optimization-ablation-...` after-the-fact, if you'd
 like to look at the incremental changes.~ TODO(emond): this
 is not done yet, I just have the before/final numbers for
 now.
@@ -880,32 +880,40 @@ now.
 
 Comparing incremental improvements on `simple_graph.rs`
 and `simple_pathfinding.rs` vs. `graph.rs` and
-`pathfinding.rs`.
+`pathfinding.rs`, in branch
+[`optimization-ablation-pathfinding`](https://github.com/JesseEmond/blitz-2023-inscription/tree/optimization-ablation-pathfinding).
 
 Going from the non-optimized "simple" versions to the
 final ones on the graph creation benchmark gives a
 **97%** relative improvement in compute time
-(1.74s -> 58ms), i.e. it is **~30x faster**.
+(1.78s -> 58ms), i.e. it is **~31x faster**.
 
 The optimizations are:
 - [Use `FxHashMap`](https://nnethercote.github.io/perf-book/hashing.html)
   for `came_from`/`cost_so_far` storage;
+- Hardcode tide schedule len/widths/heights as constants, switch to
+  static arrays for topology and tide schedules;
 - Precompute tile neighbors for all tick offsets;
-- Hardcode tick offsets/widths/heights as constants;
-- Store pre-computed neighbors in contiguous memory where
-  possible (`ArrayVec`, arrays);
+- Use a heuristic based on min
+  [Chebyshev distance](https://en.wikipedia.org/wiki/Chebyshev_distance)
+  of all targets, reprioritize queue when a goal is found;
 - Represent `(position, wait)` state as a packed `u32`;
-- Multithread on 3 cores the pathfinding from different
-  starting positions;
 - Do [early exploration](https://takinginitiative.wordpress.com/2011/05/02/optimizing-the-a-algorithm/),
   where neighbor nodes can skip the priority queue if their
   f-score is <= the current one;
-- Use a heuristic based on min
-  [Chebyshev distance](https://en.wikipedia.org/wiki/Chebyshev_distance)
-  of all targets, reprioritize queue when a goal is found.
+- Multithread on 3 cores the pathfinding from different
+  starting positions.
 
-TODO(emond): Include table of relative optimization
-ablation, adding one at a time incrementally
+| Optimization | Commit | Benchmark Time | Speedup (relative improvement) |
+| --- | --- | --- | --- |
+| Base (simple implementation) | [8dea4d6](https://github.com/JesseEmond/blitz-2023-inscription/commit/8dea4d6bee03d593b31b2556e7f55af1146b259c) | 1786ms | _N/A_ |
+| + `FxHashMap` | [cb22692](https://github.com/JesseEmond/blitz-2023-inscription/commit/cb226923cd689f26365d30853925a67cc197b65b) | 1359ms | 23.9% |
+| + Use constants & static storage | [d8fbaa5](https://github.com/JesseEmond/blitz-2023-inscription/commit/d8fbaa5d6195dd8b702de707495756be9d53ef3d) | 1240ms | 8.8% |
+| + Precompute neighbors | [afef254](https://github.com/JesseEmond/blitz-2023-inscription/commit/afef25405bb55c63caf90d07bdf265f9c0de6d5f) | 1185ms | 4.4% |
+| + Use heuristic with reprioritization | [8294dbe](https://github.com/JesseEmond/blitz-2023-inscription/commit/8294dbef4cf00bc1f8aeac923bd59ad9679de148) | 198ms | 83.3% |
+| + Pack A-star state as u32 | [56fbd48](https://github.com/JesseEmond/blitz-2023-inscription/commit/56fbd486b0bb6b359c4228ac470a362f5da394c3) | 193ms | 2.4% |
+| + Early exploration | [bf14332](https://github.com/JesseEmond/blitz-2023-inscription/commit/bf14332cd0819b20ad959dfcc7ea23612ddfff6a) | 154ms | 20.4% |
+| + Mutlithreading (3 cores) | [5f275ba](https://github.com/JesseEmond/blitz-2023-inscription/commit/5f275ba13540163a61cb13d2145756f591910510) | 58ms | 62.2% |
 
 ### Ant Colony Optimizations
 Comparing incremental improvements on `simple_ant_colony_optimization.rs`
