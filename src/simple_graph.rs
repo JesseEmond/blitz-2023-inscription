@@ -1,7 +1,9 @@
 // Implementation of graph.rs, without optimizations.
 use std::collections::{HashSet};
-use std::sync::{Arc};
+use std::sync::{mpsc, Arc};
+use std::thread;
 
+use crate::challenge_consts::{NUM_THREADS};
 use crate::game_interface::{GameTick};
 use crate::pathfinding::{Path, Pos};
 use crate::simple_pathfinding::SimplePathfinder;
@@ -35,22 +37,36 @@ impl SimpleGraph {
         let mut paths = vec![
             vec![vec![placeholder_path; tick_offsets]; all_ports.len()];
             all_ports.len()];
-        let mut pathfinder = SimplePathfinder::new();
-        let schedule: Vec<u8> = game_tick.tide_schedule.iter()
-            .map(|&e| e as u8).collect();
-        pathfinder.grid.init(&game_tick.map, &schedule);
-        let targets = HashSet::from_iter(all_ports.iter().cloned());
-        for from in 0..all_ports.len() {
-            let mut targets = targets.clone();
-            let port = all_ports[from];
-            targets.remove(&port);
-            let all_offsets_paths = pathfinder.paths_to_all_targets_by_offset(
-                &port, &targets, tick);
-            for to in 0..all_ports.len() {
-                if from == to {
-                    continue;  // leave the defaults for from==to
+        let mut handles = vec![];
+        let (tx, rx) = mpsc::channel();
+        for i in 0..NUM_THREADS {
+            let tx = tx.clone();
+            let game_tick = game_tick.clone();
+            let all_ports = all_ports.clone();
+            handles.push(thread::spawn(move || {
+                let mut pathfinder = SimplePathfinder::new();
+                let schedule: Vec<u8> = game_tick.tide_schedule.iter()
+                    .map(|&e| e as u8).collect();
+                pathfinder.grid.init(&game_tick.map, &schedule);
+
+                for j in (i..all_ports.len()).step_by(NUM_THREADS) {
+                    let source_idx = j;
+                    let mut targets = HashSet::from_iter(all_ports.iter().cloned());
+                    targets.remove(&all_ports[source_idx]);
+                    let all_offsets_paths = pathfinder.paths_to_all_targets_by_offset(
+                        &all_ports[source_idx], &targets, tick);
+                    tx.send((source_idx, all_offsets_paths)).unwrap();
                 }
-                let offset_paths = all_offsets_paths.get(&all_ports[to]).unwrap();
+            }));
+        }
+        drop(tx);  // Drop the last sender, wait until all threads are done.
+        while let Ok((from, all_offsets_paths)) = rx.recv() {
+            for (to, target) in all_ports.iter().enumerate() {
+                if from == to {
+                    continue;  // Leave defaults for from == to
+                }
+                let offset_paths = all_offsets_paths.get(target)
+                    .expect("No path between 2 ports, won't score high -- skip.");
                 for (offset, path) in offset_paths.iter().enumerate() {
                     paths[from][to][offset] = path.clone();
                     adjacency[from][to][offset] = path.cost as Cost;
