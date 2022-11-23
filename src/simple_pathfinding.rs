@@ -9,6 +9,15 @@ use crate::challenge_consts::{HEIGHT, TICK_OFFSETS, WIDTH};
 use crate::game_interface::{Map};
 use crate::pathfinding::{Path, Pos};
 
+fn chebyshev_distance(a: &Pos, b: &Pos) -> u16 {
+    u16::max(((a.x as i32) - (b.x as i32)).abs() as u16,
+             ((a.y as i32) - (b.y as i32)).abs() as u16)
+}
+
+fn heuristic(src: &Pos, targets: &Targets) -> u16 {
+    targets.iter().map(|target| chebyshev_distance(src, target)).min().unwrap()
+}
+
 type Neighbors = ArrayVec<Pos, 8>;
 
 pub struct Grid {
@@ -154,6 +163,16 @@ impl SimplePathfinder {
                 if targets.is_empty() {
                     break;
                 }
+                // Updating frontier priorities, since our heuristic depends on
+                // the list of remaining goals and we just removed one.
+                frontier.push(current, Reverse(0));  // will be recomputed
+                for (node, priority) in frontier.iter_mut() {
+                    let g = self.cost_so_far.get(node).unwrap();
+                    let h = heuristic(&node.pos, &targets);
+                    let f = g + h;
+                    *priority = Reverse(f);
+                }
+                continue;  // Grab new top frontier item, might not be 'current'
             }
 
             let tick_offset = current_tick % (TICK_OFFSETS as u16);
@@ -172,8 +191,7 @@ impl SimplePathfinder {
                 let old_cost = self.cost_so_far.get(&next).cloned();
                 if old_cost.is_none() || new_cost < old_cost.unwrap() {
                     self.cost_so_far.insert(next, new_cost);
-                    let h = 0;
-                    let f = new_cost + h;
+                    let f = new_cost + heuristic(&next.pos, &targets);
                     self.came_from.insert(next, current);
                     frontier.push(next, Reverse(f));
                 }
