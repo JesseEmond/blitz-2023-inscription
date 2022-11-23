@@ -1,4 +1,5 @@
 // Implementation of pathfinding.rs, without optimizations.
+use arrayvec::ArrayVec;
 use priority_queue::PriorityQueue;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cmp::Reverse;
@@ -8,10 +9,14 @@ use crate::challenge_consts::{HEIGHT, TICK_OFFSETS, WIDTH};
 use crate::game_interface::{Map};
 use crate::pathfinding::{Path, Pos};
 
+type Neighbors = ArrayVec<Pos, 8>;
+
 pub struct Grid {
     tide_schedule: [u8; TICK_OFFSETS],
     // topology[y][x]
     topology: [[u8; WIDTH]; HEIGHT],
+    // neighbors[tick_offset][y][x]
+    neighbors: Vec<[[Neighbors; WIDTH]; HEIGHT]>
 }
 
 impl Grid {
@@ -19,6 +24,7 @@ impl Grid {
         Grid {
             tide_schedule: [0; TICK_OFFSETS],
             topology: [[0; WIDTH]; HEIGHT],
+            neighbors: Vec::new(),
         }
     }
 
@@ -37,6 +43,18 @@ impl Grid {
         assert!(schedule.len() == TICK_OFFSETS, "Unsupported schedule len: {}",
                 schedule.len());
         self.tide_schedule = array_init::from_iter(schedule.to_owned()).unwrap();
+        self.neighbors.clear();
+        for t in 0..TICK_OFFSETS {
+            let tick_neighbors = array_init::array_init(
+                |y| array_init::array_init(|x| {
+                    let t = t as u16;
+                    let y = y as u16;
+                    let x = x as u16;
+                    let neighbors = self.neighbors(Pos { x, y }, t);
+                    Neighbors::from_iter(neighbors)
+                }));
+            self.neighbors.push(tick_neighbors);
+        }
     }
 
     pub fn tide(&self, tick: u16) -> u8 {
@@ -138,8 +156,9 @@ impl SimplePathfinder {
                 }
             }
 
-            let neighbors = self.grid.neighbors(current.pos, current_tick)
-                .map(|n| State { pos: n, wait: 0 });
+            let tick_offset = current_tick % (TICK_OFFSETS as u16);
+            let neighbors = self.grid.neighbors[tick_offset as usize][current.pos.y as usize][current.pos.x as usize]
+                .iter().map(|&n| State { pos: n, wait: 0 });
             let wait_here = iter::once(State { pos: current.pos, wait: current.wait + 1 });
             // We must wait if we're stuck on ground
             let forced_wait = !self.grid.navigable(&current.pos, current_tick);
