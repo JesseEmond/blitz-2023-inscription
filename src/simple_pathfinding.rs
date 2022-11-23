@@ -4,38 +4,43 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cmp::Reverse;
 use std::iter;
 
+use crate::challenge_consts::{HEIGHT, TICK_OFFSETS, WIDTH};
 use crate::game_interface::{Map};
 use crate::pathfinding::{Path, Pos};
 
 pub struct Grid {
-    tide_schedule: Vec<u8>,
+    tide_schedule: [u8; TICK_OFFSETS],
     // topology[y][x]
-    topology: Vec<Vec<u8>>,
-    width: usize,
-    height: usize,
+    topology: [[u8; WIDTH]; HEIGHT],
 }
 
 impl Grid {
     pub fn new() -> Self {
         Grid {
-            tide_schedule: Vec::new(),
-            topology: Vec::new(),
-            width: 0,
-            height: 0,
+            tide_schedule: [0; TICK_OFFSETS],
+            topology: [[0; WIDTH]; HEIGHT],
         }
     }
 
     pub fn init(&mut self, map: &Map, schedule: &[u8]) {
-        self.width = map.columns as usize;
-        self.height = map.rows as usize;
-        self.topology = map.topology.0.iter()
-            .map(|row| row.iter().map(|&t| t as u8).collect())
-            .collect();
-        self.tide_schedule = Vec::from_iter(schedule.to_owned());
+        let width = map.columns as usize;
+        let height = map.rows as usize;
+        let topology = &map.topology.0;
+        self.topology = array_init::array_init(
+            |y| array_init::array_init(|x| {
+                if x < width && y < height {
+                    topology[y][x] as u8
+                } else {
+                    u8::MAX
+                }
+                }));
+        assert!(schedule.len() == TICK_OFFSETS, "Unsupported schedule len: {}",
+                schedule.len());
+        self.tide_schedule = array_init::from_iter(schedule.to_owned()).unwrap();
     }
 
     pub fn tide(&self, tick: u16) -> u8 {
-        let idx = tick % (self.tide_schedule.len() as u16);
+        let idx = tick % (TICK_OFFSETS as u16);
         self.tide_schedule[idx as usize]
     }
 
@@ -54,8 +59,8 @@ impl Grid {
                     x: (pos.x as i32 + dx) as u16,
                     y: (pos.y as i32 + dy) as u16
                 };
-                if neighbor.x < self.width as u16 &&
-                    neighbor.y < self.height as u16
+                if neighbor.x < WIDTH as u16 &&
+                    neighbor.y < HEIGHT as u16
                     && self.navigable(&neighbor, tick) {
                     Some(neighbor)
                 } else {
@@ -139,7 +144,7 @@ impl SimplePathfinder {
             // We must wait if we're stuck on ground
             let forced_wait = !self.grid.navigable(&current.pos, current_tick);
             // No point in waiting longer than a full tide cycle.
-            let consider_wait = (current.wait as usize) < self.grid.tide_schedule.len();
+            let consider_wait = (current.wait as usize) < TICK_OFFSETS;
             let options = neighbors.filter(|_| !forced_wait)
                 .chain(wait_here.filter(|_| consider_wait || forced_wait));
 
