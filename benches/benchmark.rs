@@ -70,7 +70,7 @@ fn bench_held_karp(c: &mut Criterion) {
 criterion_group!{
     name = benches;
     // Limit sample size given the slow processing. Results will be noisy.
-    config = Criterion::default().sample_size(10);
+    config = Criterion::default().sample_size(50);
     targets = bench_graph_creation, bench_ant_colony_optimization, bench_held_karp,
 }
 criterion_main!(benches);

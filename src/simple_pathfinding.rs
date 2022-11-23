@@ -1,6 +1,6 @@
 // Implementation of pathfinding.rs, without optimizations.
 use priority_queue::PriorityQueue;
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::cmp::Reverse;
 use std::iter;
 
@@ -66,9 +66,9 @@ impl Grid {
     }
 }
 
-type Targets = HashSet<Pos>;
-type CameFrom = HashMap<State, State>;
-type CostSoFar = HashMap<State, u16>;
+type Targets = FxHashSet<Pos>;
+type CameFrom = FxHashMap<State, State>;
+type CostSoFar = FxHashMap<State, u16>;
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
 struct State {
@@ -158,8 +158,8 @@ impl SimplePathfinder {
     }
 
     pub fn paths_to_all_targets(&mut self, start: &Pos, targets: &Targets,
-                                tick: u16) -> HashMap<Pos, Path> {
-        let mut out = HashMap::new();
+                                tick: u16) -> FxHashMap<Pos, Path> {
+        let mut out = FxHashMap::default();
         self.a_star_search(start, targets, tick);
         for target in targets {
             if let Some(path) = self.reconstruct_path(start, target) {
@@ -171,8 +171,8 @@ impl SimplePathfinder {
 
     pub fn paths_to_all_targets_by_offset(
         &mut self, start: &Pos, targets: &Targets, tick: u16
-        ) -> HashMap<Pos, Vec<Path>> {
-        let mut out = HashMap::new();
+        ) -> FxHashMap<Pos, Vec<Path>> {
+        let mut out = FxHashMap::default();
         for offset in 0..self.grid.tide_schedule.len() {
             let tick = tick + (offset as u16);
             let all_paths = self.paths_to_all_targets(start, targets, tick);
