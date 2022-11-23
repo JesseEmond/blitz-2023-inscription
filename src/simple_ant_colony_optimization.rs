@@ -4,7 +4,6 @@ use rand::{Rng, SeedableRng};
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::rngs::SmallRng;
 use std::cmp::Ordering;
-use std::collections::{HashSet};
 use std::iter;
 use std::sync::Arc;
 
@@ -20,7 +19,7 @@ pub struct Ant {
     pub path: Vec<VertexId>,
     pub tick: u16,
     pub score: i32,
-    pub seen: HashSet<VertexId>,
+    pub seen: u64,
 }
 
 pub struct Colony {
@@ -41,7 +40,7 @@ impl Ant {
             tick: 0,
             path: Vec::new(),
             score: 0,
-            seen: HashSet::new(),
+            seen: 0,
         }
     }
 
@@ -50,8 +49,7 @@ impl Ant {
         self.current = start;
         self.tick = tick + 1;  // time to dock our starting port
         self.path.clear();
-        self.seen.clear();
-        self.seen.insert(start);
+        self.seen = 1u64 << start;
     }
 
     pub fn visit(&mut self, port: VertexId, graph: &SimpleGraph) {
@@ -61,8 +59,7 @@ impl Ant {
         let dock_cost = if port == self.start { 0 } else { 1 };
         self.tick += (cost + dock_cost) as u16;
         self.score = self.compute_score(graph, /*simulate_to_end=*/false);
-        assert!(port == self.start || !self.seen.contains(&port));
-        self.seen.insert(port);
+        self.seen |= 1u64 << port;
     }
 
     pub fn compute_score(&self, graph: &SimpleGraph, simulate_to_end: bool) -> i32 {
@@ -76,8 +73,9 @@ impl Ant {
     }
 
     fn valid_option(&self, edge_cost: u8, to: VertexId, graph: &SimpleGraph) -> bool {
+        let seen = (self.seen & (1u64 << to)) != 0;
         let have_time = self.tick + (edge_cost as u16) + 1 < graph.max_ticks;
-        have_time && !self.seen.contains(&to)
+        have_time && !seen
     }
 
     /// Add a path back home to our path, if we should, potential truncating.
@@ -97,7 +95,7 @@ impl Ant {
         if let Some(go_home_index) = go_home_at_index {
             let (vertex, tick) = self.simulate_to_num_edges(graph, go_home_index);
             for to in &self.path[go_home_index..] {
-                self.seen.remove(to);
+                self.seen ^= 1u64 << (*to as u64)
             }
             self.path.truncate(go_home_index);
             self.tick = tick;
