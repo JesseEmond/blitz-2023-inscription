@@ -160,9 +160,19 @@ impl SimplePathfinder {
         frontier.push(start_state, Reverse(0));
         self.came_from.insert(start_state, start_state);
         self.cost_so_far.insert(start_state, 0);
+        let mut early_explore: Option<(State, u16)> = None;
         
         while !frontier.is_empty() {
-            let (current, _) = frontier.pop().unwrap();
+            // Optimization: a node can skip the frontier if it has a score <=
+            // the current one when being considered as a successor.
+            let (current, current_f_score) = match early_explore {
+                Some((option, score)) => (option, score),
+                None => {
+                    let (current, priority) = frontier.pop().unwrap();
+                    (current, priority.0)
+                }
+            };
+            early_explore = None;
             let cost = *self.cost_so_far.get(&current).unwrap();
             let current_tick = tick + cost;
 
@@ -201,7 +211,20 @@ impl SimplePathfinder {
                     self.cost_so_far.insert(next, new_cost);
                     let f = new_cost + heuristic(&next.position(), &targets);
                     self.came_from.insert(next, current);
-                    frontier.push(next, Reverse(f));
+                    // This is a candidate for early exploration (skip frontier)
+                    let better_early_explore = match early_explore {
+                        Some((_, score)) => f < score,
+                        None => true,
+                    };
+                    if f <= current_f_score && better_early_explore {
+                        if let Some((option, score)) = early_explore {
+                            // No longer the best, needs to go in the frontier
+                            frontier.push(option, Reverse(score));
+                        }
+                        early_explore = Some((next, f));
+                    } else {
+                        frontier.push(next, Reverse(f));
+                    }
                 }
             }
         }
