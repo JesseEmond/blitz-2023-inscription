@@ -13,14 +13,6 @@ use crate::challenge::{Solution, eval_score};
 use crate::simple_graph::{SimpleGraph, VertexId};
 use crate::solvers::{AntColonyOptimizationSolver};
 
-/// Same as HyperParams, but with 'alpha' added (not included in final version).
-#[derive(Clone)]
-pub struct ExtendedHyperParams {
-    pub base: HyperParams,
-    /// Alpha parameter, power applied to the pheromones when computing weights.
-    pub pheromones_power: f32,
-}
-
 #[derive(Clone)]
 pub struct Ant {
     pub start: VertexId,
@@ -32,7 +24,7 @@ pub struct Ant {
 }
 
 pub struct Colony {
-    pub hyperparams: ExtendedHyperParams,
+    pub hyperparams: HyperParams,
     pub graph: Arc<SimpleGraph>,
 
     // pheromones[from][to]
@@ -160,18 +152,17 @@ impl Ant {
 }
 
 impl Colony {
-    pub fn new(graph: &Arc<SimpleGraph>,
-               hyperparams: ExtendedHyperParams) -> Self {
+    pub fn new(graph: &Arc<SimpleGraph>, hyperparams: HyperParams) -> Self {
         // TODO: this should have + min, but matching final version to get the
         // same values.
-        let base_pheromones = hyperparams.base.pheromones_init_ratio * (
-            hyperparams.base.max_pheromones - hyperparams.base.min_pheromones);
+        let base_pheromones = hyperparams.pheromones_init_ratio * (
+            hyperparams.max_pheromones - hyperparams.min_pheromones);
         let pheromones = vec![
             vec![base_pheromones; graph.ports.len()];
             graph.ports.len()];
         Colony {
             graph: graph.clone(),
-            rng: SmallRng::seed_from_u64(hyperparams.base.seed),
+            rng: SmallRng::seed_from_u64(hyperparams.seed),
             global_best: None,
             hyperparams,
             pheromones,
@@ -179,7 +170,7 @@ impl Colony {
     }
 
     pub fn run(&mut self) -> Solution {
-        for _ in 0..self.hyperparams.base.iterations {
+        for _ in 0..self.hyperparams.iterations {
             self.run_iteration();
         }
         let best_ant = self.global_best.as_ref().unwrap();
@@ -192,7 +183,7 @@ impl Colony {
     }
 
     fn construct_solutions(&mut self) {
-        let ants: Vec<Ant> = iter::repeat(()).take(self.hyperparams.base.ants)
+        let ants: Vec<Ant> = iter::repeat(()).take(self.hyperparams.ants)
             .map(|_| self.construct_solution()).collect();
         let local_best = ants.iter().max_by_key(|ant| ant.score).cloned().unwrap();
         if self.global_best.is_none() || local_best.score > self.global_best.as_ref().unwrap().score {
@@ -206,10 +197,10 @@ impl Colony {
         ant.reset(start as VertexId, self.graph.start_tick);
         while let Some(to) = self.sample_option(&ant) {
             // Local trail update
-            let pheromone_add = self.hyperparams.base.local_evaporation_rate *
-                self.hyperparams.base.min_pheromones;
+            let pheromone_add = self.hyperparams.local_evaporation_rate *
+                self.hyperparams.min_pheromones;
             self.evaporate_add_pheromones(
-                ant.current, to, self.hyperparams.base.local_evaporation_rate,
+                ant.current, to, self.hyperparams.local_evaporation_rate,
                 pheromone_add);
             ant.visit(to, &self.graph);
         }
@@ -226,17 +217,16 @@ impl Colony {
                 to != ant.current && ant.valid_option(cost, to, &self.graph)
             }).collect();
         let weights: Vec<f32> = options.iter().map(|&to| {
-            let alpha = self.hyperparams.pheromones_power;
-            let beta = self.hyperparams.base.heuristic_power;
+            let beta = self.hyperparams.heuristic_power;
             let distance = self.graph.cost(
                 self.graph.tick_offset(ant.tick), ant.current, to);
             let eta = 1.0 / (distance as f32);
             let pheromones = self.pheromones[ant.current as usize][to as usize];
-            pheromones.powf(alpha) * eta.powf(beta)
+            pheromones * eta.powf(beta)
         }).collect();
         if options.is_empty() {
             None
-        } else if self.rng.gen::<f32>() < self.hyperparams.base.exploitation_probability {
+        } else if self.rng.gen::<f32>() < self.hyperparams.exploitation_probability {
             let idx = weights.iter().enumerate()
                 .max_by(|(_, w1), (_, w2)| w1.partial_cmp(w2).unwrap_or(Ordering::Equal))
                 .map(|(idx, _)| idx).unwrap();
@@ -258,14 +248,14 @@ impl Colony {
                     continue;
                 }
                 self.evaporate_pheromones(
-                    from, to, self.hyperparams.base.evaporation_rate);
+                    from, to, self.hyperparams.evaporation_rate);
             }
         }
 
         // Global trail update
         let best = self.global_best.as_ref().unwrap();
         let add = 1.0 / (best.tick as f32);
-        let pheromone_add = self.hyperparams.base.evaporation_rate * add;
+        let pheromone_add = self.hyperparams.evaporation_rate * add;
         let mut from = best.start;
         let best_path = best.path.clone();
         for to in best_path {
@@ -293,14 +283,14 @@ impl Colony {
     }
 
     fn set_pheromones(&mut self, from: VertexId, to: VertexId, pheromones: f32) {
-        let pheromones = pheromones.clamp(self.hyperparams.base.min_pheromones,
-                                          self.hyperparams.base.max_pheromones);
+        let pheromones = pheromones.clamp(self.hyperparams.min_pheromones,
+                                          self.hyperparams.max_pheromones);
         self.pheromones[from as usize][to as usize] = pheromones;
     }
 }
 
 pub struct SimpleAntColonyOptimizationSolver {
-    pub hyperparams: ExtendedHyperParams,
+    pub hyperparams: HyperParams,
 }
 
 impl SimpleAntColonyOptimizationSolver {
@@ -312,10 +302,8 @@ impl SimpleAntColonyOptimizationSolver {
 
 impl Default for SimpleAntColonyOptimizationSolver {
     fn default() -> Self {
-        let base = AntColonyOptimizationSolver::default().hyperparams;
-        SimpleAntColonyOptimizationSolver {
-            hyperparams: ExtendedHyperParams { base, pheromones_power: 1.0 }
-        }
+        let hyperparams = AntColonyOptimizationSolver::default().hyperparams;
+        SimpleAntColonyOptimizationSolver { hyperparams }
     }
 }
 
