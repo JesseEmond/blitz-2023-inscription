@@ -103,11 +103,19 @@ type CameFrom = FxHashMap<State, State>;
 type CostSoFar = FxHashMap<State, u16>;
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
-struct State {
-    pos: Pos,
-    wait: u8,
-}
+pub struct State(u32);
 
+impl State {
+    pub fn new(pos: Pos, wait: u8) -> Self {
+        State((pos.x as u32) << 16 | (pos.y as u32) << 8 | (wait as u32))
+    }
+    pub fn position(&self) -> Pos {
+        Pos { x: (self.0 >> 16) as u16, y: ((self.0 >> 8) & 0xff) as u16 }
+    }
+    pub fn wait(&self) -> u8 {
+        (self.0 & 0xff) as u8
+    }
+}
 
 pub struct SimplePathfinder {
     pub grid: Grid,
@@ -126,14 +134,14 @@ impl SimplePathfinder {
     }
 
     fn reconstruct_path(&self, start: &Pos, goal: &Pos) -> Option<Path> {
-        let mut current = State { pos: *goal, wait: 0 };
+        let mut current = State::new(*goal, 0);
         if !self.came_from.contains_key(&current) {
             return None;
         }
         let cost = *self.cost_so_far.get(&current).unwrap();
         let mut steps = Vec::new();
-        while current.pos != *start || current.wait > 0 {
-            steps.push(current.pos);
+        while current.position() != *start || current.wait() > 0 {
+            steps.push(current.position());
             current = *self.came_from.get(&current).unwrap();
         }
         steps.push(*start);
@@ -148,7 +156,7 @@ impl SimplePathfinder {
         let mut targets = targets.clone();
 
         let mut frontier: PriorityQueue<State, Reverse<u16>> = PriorityQueue::new();
-        let start_state = State { pos: *start, wait: 0 };
+        let start_state = State::new(*start, 0);
         frontier.push(start_state, Reverse(0));
         self.came_from.insert(start_state, start_state);
         self.cost_so_far.insert(start_state, 0);
@@ -158,8 +166,8 @@ impl SimplePathfinder {
             let cost = *self.cost_so_far.get(&current).unwrap();
             let current_tick = tick + cost;
 
-            if targets.contains(&current.pos) {
-                targets.remove(&current.pos);
+            if targets.contains(&current.position()) {
+                targets.remove(&current.position());
                 if targets.is_empty() {
                     break;
                 }
@@ -168,7 +176,7 @@ impl SimplePathfinder {
                 frontier.push(current, Reverse(0));  // will be recomputed
                 for (node, priority) in frontier.iter_mut() {
                     let g = self.cost_so_far.get(node).unwrap();
-                    let h = heuristic(&node.pos, &targets);
+                    let h = heuristic(&node.position(), &targets);
                     let f = g + h;
                     *priority = Reverse(f);
                 }
@@ -176,13 +184,13 @@ impl SimplePathfinder {
             }
 
             let tick_offset = current_tick % (TICK_OFFSETS as u16);
-            let neighbors = self.grid.neighbors[tick_offset as usize][current.pos.y as usize][current.pos.x as usize]
-                .iter().map(|&n| State { pos: n, wait: 0 });
-            let wait_here = iter::once(State { pos: current.pos, wait: current.wait + 1 });
+            let neighbors = self.grid.neighbors[tick_offset as usize][current.position().y as usize][current.position().x as usize]
+                .iter().map(|&n| State::new(n, 0));
+            let wait_here = iter::once(State::new(current.position(), current.wait() + 1));
             // We must wait if we're stuck on ground
-            let forced_wait = !self.grid.navigable(&current.pos, current_tick);
+            let forced_wait = !self.grid.navigable(&current.position(), current_tick);
             // No point in waiting longer than a full tide cycle.
-            let consider_wait = (current.wait as usize) < TICK_OFFSETS;
+            let consider_wait = (current.wait() as usize) < TICK_OFFSETS;
             let options = neighbors.filter(|_| !forced_wait)
                 .chain(wait_here.filter(|_| consider_wait || forced_wait));
 
@@ -191,7 +199,7 @@ impl SimplePathfinder {
                 let old_cost = self.cost_so_far.get(&next).cloned();
                 if old_cost.is_none() || new_cost < old_cost.unwrap() {
                     self.cost_so_far.insert(next, new_cost);
-                    let f = new_cost + heuristic(&next.pos, &targets);
+                    let f = new_cost + heuristic(&next.position(), &targets);
                     self.came_from.insert(next, current);
                     frontier.push(next, Reverse(f));
                 }
