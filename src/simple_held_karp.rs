@@ -1,6 +1,5 @@
 // Implementation of held_karp.rs, without optimizations.
 
-use itertools::Itertools;
 use std::sync::{Arc};
 
 use crate::challenge::{Solution, eval_score};
@@ -26,16 +25,19 @@ fn held_karp(graph: &Arc<SimpleGraph>) -> Option<Solution> {
     best_tour.to_solution(&graph)
 }
 
-#[derive(PartialEq, Eq, Hash, Copy, Clone)]
 struct Mask(u32);
 
 impl Mask {
-    pub fn from_set(set: &Vec<VertexId>) -> Mask {
-        let mut mask = 0u32;
-        for &v in set {
-            mask |= 1 << (v as u32);
-        }
-        Mask(mask)
+    pub fn next_combination(&mut self) {
+        // https://graphics.stanford.edu/~seander/bithacks.html#NextBitPermutation
+        let t: u32 = self.0 | (self.0 - 1);
+        self.0 = (t + 1) | ((!t & (-(!t as i32)) as u32) - 1) >> (self.0.trailing_zeros() + 1);
+    }
+
+    pub fn items(&self) -> impl Iterator<Item=VertexId> + '_ {
+        (0..MAX_MASK_ITEMS)
+            .map(|v| v as VertexId)
+            .filter(|&v| ((1u32 << v) & self.0) != 0)
     }
 }
 
@@ -70,7 +72,7 @@ impl HeldKarp {
             let cost = graph.cost(
                 graph.tick_offset(start_tick),
                 start, self.untranslate(start, *k)) as Cost;
-            let mask = Mask::from_set(&vec![*k]);
+            let mask = Mask(1u32 << *k);
             // +1 to dock
             self.g[mask.0 as usize][*k as usize] = start_tick + cost + 1;
             self.p[mask.0 as usize][*k as usize] = *k;
@@ -79,29 +81,30 @@ impl HeldKarp {
         // For |S|=s, smallest cost depends on |S'|=s-1 values of g(S', k).
         let max_set_items = graph.ports.len() - 1;
         for s in 2..=max_set_items {
-            for set in nodes.iter().cloned().combinations(s) {
-                let mask = Mask::from_set(&set);
-                for k in &set {
-                    let set_minus_k = set.iter().cloned().filter(|&v| v != *k).collect();
-                    let mask_minus_k = Mask::from_set(&set_minus_k);
-                    let (min_cost, min_vertex) = set_minus_k.iter().cloned()
+            let mut mask = Mask((1u32 << s) - 1);
+            let last_mask = Mask(mask.0 << (MAX_MASK_ITEMS - s));
+            while mask.0 <= last_mask.0 {
+                for k in mask.items() {
+                    let mask_minus_k = Mask(mask.0 ^ (1u32 << k));
+                    let (min_cost, min_vertex) = mask_minus_k.items()
                         .map(|m| {
                         let current_cost = self.g[mask_minus_k.0 as usize][m as usize];
                         let m_k_cost = graph.cost(
                             graph.tick_offset(current_cost),
                             self.untranslate(start, m),
-                            self.untranslate(start, *k)) as Cost;
+                            self.untranslate(start, k)) as Cost;
                         let cost = current_cost + m_k_cost + 1;  // +1 to dock
                         (cost, m)
                     }).min_by_key(|&(cost, _)| cost).unwrap();
-                    self.g[mask.0 as usize][*k as usize] = min_cost;
-                    self.p[mask.0 as usize][*k as usize] = min_vertex;
+                    self.g[mask.0 as usize][k as usize] = min_cost;
+                    self.p[mask.0 as usize][k as usize] = min_vertex;
                 }
+                mask.next_combination();
             }
         }
 
         // Find the best tour by checking paths back to the start.
-        let mask_all = Mask::from_set(&nodes);
+        let mask_all = Mask((1u32 << MAX_MASK_ITEMS) - 1);
         let (total_cost, last_city) = nodes.iter().cloned().map(|k| {
             let current_cost = self.g[mask_all.0 as usize][k as usize];
             let k_start_cost = graph.cost(
@@ -112,21 +115,20 @@ impl HeldKarp {
             (cost, k)
         }).min_by_key(|&(cost, _)| cost).unwrap();
 
-        let vertices = self.backtrack(start, last_city, nodes);
+        let vertices = self.backtrack(start, last_city, mask_all);
         Tour { cost: total_cost, vertices }
     }
 
     fn backtrack(&self, start: VertexId, last: VertexId,
-                 set: Vec<VertexId>) -> Vec<VertexId> {
-        let mut set = set;
-        let mut vertices = Vec::with_capacity(set.len() + 2);
+                 mask: Mask) -> Vec<VertexId> {
+        let mut mask = mask;
+        let mut vertices = Vec::with_capacity(mask.0.count_ones() as usize + 2);
         vertices.push(start);
         let mut vertex = last;
-        while !set.is_empty() {
+        while mask.0 != 0 {
             vertices.push(self.untranslate(start, vertex));
-            let mask = Mask::from_set(&set);
             let next = self.p[mask.0 as usize][vertex as usize];
-            set.retain(|&v| v != vertex);
+            mask.0 ^= 1u32 << vertex;
             vertex = next;
         }
         vertices.push(start);
