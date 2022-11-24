@@ -1,5 +1,6 @@
 // Implementation of ant_colony_optimization.rs, without speed optimizations.
 
+use arrayvec::ArrayVec;
 use rand::{Rng, SeedableRng};
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::rngs::SmallRng;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 
 use crate::ant_colony_optimization::{HyperParams};
 use crate::challenge::{Solution, eval_score};
+use crate::challenge_consts::{MAX_PORTS};
 use crate::simple_graph::{SimpleGraph, VertexId};
 use crate::solvers::{AntColonyOptimizationSolver};
 
@@ -227,30 +229,51 @@ impl Colony {
     }
 
     fn sample_option(&mut self, ant: &Ant) -> Option<VertexId> {
-        let options: Vec<VertexId> = (0..self.graph.ports.len())
-            .map(|v| v as VertexId)
-            .filter(|&to| {
-                let cost = self.graph.cost(self.graph.tick_offset(ant.tick),
-                                           ant.current, to);
-                to != ant.current && ant.valid_option(cost, to, &self.graph)
-            }).collect();
-        let weights: Vec<f32> = options.iter().map(|&to| {
-            let from = ant.current;
-            let pheromones = self.pheromones[from as usize][to as usize];
-            let offset = self.graph.tick_offset(ant.tick);
-            pheromones * self.eta_pows[from as usize][offset as usize][to as usize]
-        }).collect();
-        if options.is_empty() {
-            None
-        } else if self.rng.gen::<f32>() < self.hyperparams.exploitation_probability {
-            let idx = weights.iter().enumerate()
+        let tick_offset = self.graph.tick_offset(ant.tick);
+        let weights: ArrayVec<f32, MAX_PORTS> =
+            ArrayVec::from_iter(
+                (0..self.graph.ports.len())
+                .map(|to| {
+                    let to = to as VertexId;
+                    let cost = self.graph.cost(tick_offset, ant.current, to);
+                    let valid = ant.valid_option(cost, to, &self.graph);
+                    if valid {
+                        let pheromones = self.pheromones[ant.current as usize][to as usize];
+                        let eta_pow = self.eta_pows[ant.current as usize][tick_offset as usize][to as usize];
+                        pheromones * eta_pow
+                    } else {
+                        0f32
+                    }
+                }));
+        let rand_valid_option = |rng: &mut SmallRng| -> Option<VertexId> {
+            let all_options: Vec<VertexId> = (0..self.graph.ports.len())
+                .map(|v| v as VertexId)
+                .filter(|&i| {
+                    let cost = self.graph.cost(tick_offset, ant.current, i);
+                    ant.valid_option(cost, i, &self.graph)
+                }).collect();
+            if all_options.is_empty() {
+                None
+            } else {
+                Some(all_options[rng.gen_range(0..all_options.len())])
+            }
+        };
+        if self.rng.gen::<f32>() < self.hyperparams.exploitation_probability {
+            // Greedy exploitation
+            let to = weights.iter().enumerate()
                 .max_by(|(_, w1), (_, w2)| w1.partial_cmp(w2).unwrap_or(Ordering::Equal))
-                .map(|(idx, _)| idx).unwrap();
-            Some(options[idx])
+                .map(|(idx, _)| idx).unwrap() as VertexId;
+            let cost = self.graph.cost(tick_offset, ant.current, to);
+            if ant.valid_option(cost, to, &self.graph) {
+                Some(to)
+            } else {
+                rand_valid_option(&mut self.rng)
+            }
         } else if let Ok(distribution) = WeightedIndex::new(weights) {
-            Some(options[distribution.sample(&mut self.rng)])
+            let option = distribution.sample(&mut self.rng);
+            Some(option as VertexId)
         } else {
-            Some(options[self.rng.gen_range(0..options.len())])
+            rand_valid_option(&mut self.rng)
         }
     }
 
