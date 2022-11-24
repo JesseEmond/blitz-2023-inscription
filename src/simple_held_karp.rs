@@ -1,11 +1,15 @@
 // Implementation of held_karp.rs, without optimizations.
 
 use itertools::Itertools;
-use std::collections::{HashMap};
 use std::sync::{Arc};
 
 use crate::challenge::{Solution, eval_score};
+use crate::challenge_consts::{MAX_PORTS};
 use crate::simple_graph::{SimpleGraph, VertexId};
+
+const MAX_MASK_ITEMS: usize = MAX_PORTS;
+// Size needed for an array indexed by masks.
+const NUM_MASKS: usize = 1 << MAX_MASK_ITEMS;
 
 type Cost = u16;
 
@@ -37,22 +41,24 @@ impl Mask {
 
 struct HeldKarp {
     /// g(S, e) min cost of going through all nodes in 'S', ending in 'e'.
-    g: HashMap<(Mask, VertexId), Cost>,
+    /// g[mask][e]
+    g: Vec<Vec<Cost>>,
     /// p(S, e) predecessor to 'e' of going through nodes in 'S', ending in 'e'.
     /// Used when backtracking.
-    p: HashMap<(Mask, VertexId), VertexId>,
+    /// p[mask][e]
+    p: Vec<Vec<VertexId>>,
 }
 
 impl HeldKarp {
     pub fn new() -> Self {
-        HeldKarp { g: HashMap::new(), p: HashMap::new() }
+        HeldKarp { g: Vec::new(), p: Vec::new() }
     }
 
     pub fn traveling_salesman(
         &mut self, graph: &SimpleGraph, start: VertexId) -> Tour {
         let start_tick = graph.start_tick + 1;  // time to dock spawning port
-        self.g.clear();
-        self.p.clear();
+        self.g = vec![vec![Cost::MAX; graph.ports.len()]; NUM_MASKS];
+        self.p = vec![vec![VertexId::MAX; graph.ports.len()]; NUM_MASKS];
 
         let others: Vec<VertexId> = (0..graph.ports.len())
             .map(|v| v as VertexId).filter(|&v| v != start).collect();
@@ -61,8 +67,9 @@ impl HeldKarp {
         for k in &others {
             let cost = graph.cost(graph.tick_offset(start_tick), start, *k) as Cost;
             let mask = Mask::from_set(&vec![*k]);
-            self.g.insert((mask, *k), start_tick + cost + 1);  // +1 to dock
-            self.p.insert((mask, *k), *k);
+            // +1 to dock
+            self.g[mask.0 as usize][*k as usize] = start_tick + cost + 1;
+            self.p[mask.0 as usize][*k as usize] = *k;
         }
 
         // For |S|=s, smallest cost depends on |S'|=s-1 values of g(S', k).
@@ -74,14 +81,14 @@ impl HeldKarp {
                     let set_minus_k = set.iter().cloned().filter(|&v| v != *k).collect();
                     let mask_minus_k = Mask::from_set(&set_minus_k);
                     let (min_cost, min_vertex) = set_minus_k.iter().cloned().map(|m| {
-                        let current_cost = *self.g.get(&(mask_minus_k, m)).unwrap();
+                        let current_cost = self.g[mask_minus_k.0 as usize][m as usize];
                         let m_k_cost = graph.cost(
                             graph.tick_offset(current_cost), m, *k) as Cost;
                         let cost = current_cost + m_k_cost + 1;  // +1 to dock
                         (cost, m)
                     }).min_by_key(|&(cost, _)| cost).unwrap();
-                    self.g.insert((mask, *k), min_cost);
-                    self.p.insert((mask, *k), min_vertex);
+                    self.g[mask.0 as usize][*k as usize] = min_cost;
+                    self.p[mask.0 as usize][*k as usize] = min_vertex;
                 }
             }
         }
@@ -89,7 +96,7 @@ impl HeldKarp {
         // Find the best tour by checking paths back to the start.
         let mask_all = Mask::from_set(&others);
         let (total_cost, last_city) = others.iter().cloned().map(|k| {
-            let current_cost = *self.g.get(&(mask_all, k)).unwrap();
+            let current_cost = self.g[mask_all.0 as usize][k as usize];
             let k_start_cost = graph.cost(
                 graph.tick_offset(current_cost), k, start) as Cost;
             // Note: no +1 for docking, the last dock tick doesn't count.
@@ -110,7 +117,7 @@ impl HeldKarp {
         while !set.is_empty() {
             vertices.push(vertex);
             let mask = Mask::from_set(&set);
-            let next = *self.p.get(&(mask, vertex)).unwrap();
+            let next = self.p[mask.0 as usize][vertex as usize];
             set.retain(|&v| v != vertex);
             vertex = next;
         }
