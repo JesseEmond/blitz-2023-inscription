@@ -80,7 +80,6 @@ pub struct Ant {
     pub current: VertexId,
     pub path: ArrayVec<VertexId, MAX_PORTS>,
     pub tick: u16,
-    pub tick_offset: u8,  // offset in the tide schedule, for optimization.
     pub score: i32,
     pub seen: u64,  // mask of seen vertices
 }
@@ -186,18 +185,16 @@ impl Ant {
             start: 0,
             current: 0,
             tick: 0,
-            tick_offset: 0,
             path: ArrayVec::new(),
             score: 0,
             seen: 0,
         }
     }
 
-    pub fn reset(&mut self, start: VertexId, tick: u16, graph: &Graph) {
+    pub fn reset(&mut self, start: VertexId, tick: u16) {
         self.start = start;
         self.current = start;
         self.tick = tick + 1;  // Time to dock our start
-        self.tick_offset = graph.tick_offset(self.tick);
         self.path.clear();
         assert!(start < 64);
         self.seen = 1u64 << start;
@@ -205,11 +202,10 @@ impl Ant {
 
     fn visit(&mut self, port: VertexId, graph: &Graph) {
         self.path.push(port);
-        let cost = graph.cost(self.tick_offset, self.current, port);
+        let cost = graph.cost(graph.tick_offset(self.tick), self.current, port);
         self.current = port;
         let dock_cost = if port == self.start { 0 } else { 1 };
         self.tick += (cost + dock_cost) as u16;
-        self.tick_offset = graph.tick_offset(self.tick);
         self.score = self.compute_score(graph, /*simulate_to_end=*/false);
         if self.seen & (1u64 << port) != 0 {
             assert!(port == self.start,
@@ -290,7 +286,6 @@ impl Ant {
             }
             self.path.truncate(go_home_index);
             self.tick = tick;
-            self.tick_offset = graph.tick_offset(tick);
             self.current = vertex;
             self.visit(self.start, graph);
             assert!(self.compute_score(graph, /*simulate_to_end=*/true) == best_score);
@@ -299,7 +294,7 @@ impl Ant {
 
     fn to_solution(&self, graph: &Graph) -> Solution {
         let mut repeat_ant = Ant::new();
-        repeat_ant.reset(self.start, graph.start_tick, graph);
+        repeat_ant.reset(self.start, graph.start_tick);
         let mut paths = Vec::new();
         for to in &self.path {
             let path = graph.path(graph.tick_offset(repeat_ant.tick),
@@ -331,19 +326,24 @@ impl VertexTrails {
             }).collect()
         }).collect();
 
-        // TODO: this should have + min_pheromones
-        let base_pheromones = hyperparams.pheromones_init_ratio * (
-            hyperparams.max_pheromones - hyperparams.min_pheromones);
+        let base_pheromones = hyperparams.pheromones_init_ratio
+            * (hyperparams.max_pheromones - hyperparams.min_pheromones)
+            + hyperparams.min_pheromones;
 
-        VertexTrails {
+        let unset_weights = ArrayVec::from_iter(
+            vec![ArrayVec::from_iter(vec![1.0; graph.ports.len()]); TICK_OFFSETS]);
+        let mut trails = VertexTrails {
             vertex: vertex_id,
             pheromones: ArrayVec::from_iter(vec![base_pheromones; graph.ports.len()]),
-            offset_trail_weights: ArrayVec::from_iter(
-                vec![ArrayVec::from_iter(vec![1.0; graph.ports.len()]); TICK_OFFSETS]),
+            offset_trail_weights: unset_weights,
             min: hyperparams.min_pheromones,
             max: hyperparams.max_pheromones,
             eta_pows,
+        };
+        for to in 0..graph.ports.len() {
+            trails.update_weights(to as VertexId);
         }
+        trails
     }
 
     pub fn evaporate_add(&mut self, to: VertexId, evaporation: f32,
@@ -378,17 +378,11 @@ impl VertexTrails {
 
     pub fn weights(&self, tick: u16) -> &EdgeWeights {
         let offset = (tick as usize) % TICK_OFFSETS;
-        unsafe {
-            // TODO: verify if get_unchecked really helped...?
-            self.offset_trail_weights.get_unchecked(offset)
-        }
+        &self.offset_trail_weights[offset]
     }
 
     fn eta_pow(&self, tick_offset: u8, to: VertexId) -> f32 {
-        unsafe {
-            // TODO: verify if get_unchecked really helped...?
-            *self.eta_pows.get_unchecked(tick_offset as usize).get_unchecked(to as usize)
-        }
+        self.eta_pows[tick_offset as usize][to as usize]
     }
 }
 
@@ -461,19 +455,23 @@ impl Colony {
 
     fn sample_option(&mut self, ant: &Ant) -> Option<VertexId> {
         let tick = ant.tick;
+        let tick_offset = self.graph.tick_offset(tick);
         let trail = &self.trails[ant.current as usize];
-        let weights = trail.weights(tick).iter().enumerate().map(|(i, w)| {
+        let weights = trail.weights(tick).iter().enumerate().map(|(i, &w)| {
             let i = i as VertexId;
-            let cost = self.graph.cost(ant.tick_offset, ant.current, i);
+            let cost = self.graph.cost(tick_offset, ant.current, i);
             let valid = i != ant.current && ant.valid_option(cost, i, &self.graph);
-            // TODO: verify if this multiplication really helped vs. if...?
-            w * ((valid as i32) as f32)
+            if valid {
+                w
+            } else {
+                0f32
+            }
         });
         let rand_valid_option = |rng: &mut SmallRng| -> Option<VertexId> {
             let all_options: Vec<VertexId> = (0..self.graph.ports.len())
                 .map(|v| v as VertexId)
                 .filter(|&i| {
-                    let cost = self.graph.cost(ant.tick_offset, ant.current, i);
+                    let cost = self.graph.cost(tick_offset, ant.current, i);
                     i != ant.current && ant.valid_option(cost, i, &self.graph)
                 }).collect();
             if all_options.is_empty() {
@@ -488,7 +486,7 @@ impl Colony {
                 .max_by(|(_, w1), (_, w2)| w1.partial_cmp(w2).unwrap_or(Ordering::Equal))
                 .map(|(idx, _)| idx).unwrap();
             let to = to as VertexId;
-            if ant.valid_option(self.graph.cost(ant.tick_offset, ant.current, to),
+            if ant.valid_option(self.graph.cost(tick_offset, ant.current, to),
                                 to, &self.graph) {
                 Some(to)
             } else {
@@ -506,7 +504,7 @@ impl Colony {
     fn construct_solution(&mut self) -> Ant {
         let mut ant = Ant::new();
         let start = self.rng.gen_range(0..self.graph.ports.len());
-        ant.reset(start as VertexId, self.graph.start_tick, &self.graph);
+        ant.reset(start as VertexId, self.graph.start_tick);
         while let Some(to) = self.sample_option(&ant) {
             // Local trail update
             let pheromone_add = self.hyperparams.local_evaporation_rate

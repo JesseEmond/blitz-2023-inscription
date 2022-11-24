@@ -162,10 +162,9 @@ impl Ant {
 impl Colony {
     pub fn new(graph: &Arc<SimpleGraph>,
                hyperparams: ExtendedHyperParams) -> Self {
-        // TODO: this should have + min, but matching final version to get the
-        // same values.
-        let base_pheromones = hyperparams.base.pheromones_init_ratio * (
-            hyperparams.base.max_pheromones - hyperparams.base.min_pheromones);
+        let base_pheromones = hyperparams.base.pheromones_init_ratio
+            * (hyperparams.base.max_pheromones - hyperparams.base.min_pheromones)
+            + hyperparams.base.min_pheromones;
         let pheromones = vec![
             vec![base_pheromones; graph.ports.len()];
             graph.ports.len()];

@@ -942,8 +942,6 @@ The optimizations are:
   the `Vec`) for pheromones, ant storage, etc., put all per-vertex
   information close in memory.
   
-TODO link commits
-  
 | Optimization | Commit | Benchmark Time | Speedup (relative improvement) |
 | --- | --- | --- | --- |
 | Base (simple implementation) | [1b22462](https://github.com/JesseEmond/blitz-2023-inscription/commit/1b22462b55289089bba6cab1016ce3e1da460ff5) | 567ms | _N/A_ |
@@ -959,13 +957,6 @@ TODO link commits
 _Note that the final result is slightly faster than my final version at
 HEAD because I ended up with other changes to the graph to focus on
 Held-Karp instead._
-
-TODOs from this exercise:
-- do update_weights on new
-- do +min on pheromones init
-- get rid of get_unchecked weights -- slower
-- remove * instead of if -- no diff
-- remove precomputed tick_offset -- no diff
 
 ### Held-Karp Optimizations
 Comparing incremental improvements on `simple_held_karp.rs` vs.
