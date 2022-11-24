@@ -869,12 +869,15 @@ results can be pretty noisy.
 The listed optimizations are not in the same order that I
 added them during the challenge, but to be able to get an
 understanding of how each contributed to the final speed,
-I re-implemented "simple" versions of all operations, ~and
+I re-implemented "simple" versions of all operations, and
 gradually re-introduced the same optimizations in branches
 called `optimization-ablation-...` after-the-fact, if you'd
-like to look at the incremental changes.~ TODO(emond): this
-is not done yet, I just have the before/final numbers for
-now.
+like to look at the incremental changes.
+
+Take the relative speed improvements with a grain of salt,
+they depend on the ordering of the changes somewhat (it
+might not be a big bottleneck in the order that I made the
+changes, but maybe was later).
 
 ### Pathfinding Optimizations
 
@@ -917,28 +920,52 @@ The optimizations are:
 
 ### Ant Colony Optimizations
 Comparing incremental improvements on `simple_ant_colony_optimization.rs`
-vs. `ant_colony_optimization.rs`.
+vs. `ant_colony_optimization.rs`, in branch
+[`optimization-ablation-aco`](https://github.com/JesseEmond/blitz-2023-inscription/tree/optimization-ablation-aco).
 
 Going from the non-optimized "simple" version to the
-final one on the ACO benchmark gives a **73%**
-relative improvement in compute time (564ms -> 151ms),
-i.e. it is **~3.7x faster**.
+final one on the ACO benchmark gives a **74%**
+relative improvement in compute time (567ms -> 148ms),
+i.e. it is **~3.8x faster**.
 
 The optimizations are:
 - Remove `alpha` hyperparameter (power for pheromones), to avoid frequent
   `powf`s. This does change behavior, but after resweeping it looks like
   this was okay to do without losing points;
-- Make use of continuous memory (`ArrayVec`s) for pheromones, ant
-  storage, etc.;
 - Store ant `seen` ports as a `u64` mask;
 - Precompute heuristics and `eta ^ beta` once to avoid `powf`s;
 - Use a fixed weight array with values forced to 0s for invalid choices,
-  instead of building options on the fly and sampling on those.
+  instead of building options on the fly and sampling on those;
 - Cache weight computations for fast lookup in sampling, update when
-  updating trails.
+  updating trails;
+- Make use of continuous memory (`ArrayVec`s, without the indirection of
+  the `Vec`) for pheromones, ant storage, etc., put all per-vertex
+  information close in memory.
   
-TODO(emond): Include table of relative optimization
-ablation, adding one at a time incrementally
+TODO link commits
+  
+| Optimization | Commit | Benchmark Time | Speedup (relative improvement) |
+| --- | --- | --- | --- |
+| Base (simple implementation) | [1b22462](https://github.com/JesseEmond/blitz-2023-inscription/commit/1b22462b55289089bba6cab1016ce3e1da460ff5) | 567ms | _N/A_ |
+| + Remove alpha hyperparam | [5d24422](https://github.com/JesseEmond/blitz-2023-inscription/commit/5d24422a26c882e888017944d4ffb1db7bdebc97) | 534ms | 5.9% |
+| + `seen` u64 mask | [c51e05c](https://github.com/JesseEmond/blitz-2023-inscription/commit/c51e05c2c09d634a8e5ce8c279a2f5f946cbf94f) | 340ms | 36.7% |
+| + Precompute `eta ^ beta` | [4e3b6b1](https://github.com/JesseEmond/blitz-2023-inscription/commit/4e3b6b176fac4c60fc5a053b7a647c7d0e91415c) | 265ms | 21.8% |
+| + Fixed weight array | [cdad9d7](https://github.com/JesseEmond/blitz-2023-inscription/commit/cdad9d7ed5bc6415e0e0635b786669fceafe8006) | 201ms | 24.1% |
+| + Cache weights | [b0822b4](https://github.com/JesseEmond/blitz-2023-inscription/commit/b0822b419d567e46aa3718099e5dce044cd768fa) | 175ms | 13.3% |
+| + Trails `ArrayVec`s & better cache locality | [6bb47eb](https://github.com/JesseEmond/blitz-2023-inscription/commit/6bb47ebd03ccf2cf7219a94bcd621e6dceb0f627) | 169ms | 3.4% |
+| + `ArrayVec` for ant path | [eecbe2d](https://github.com/JesseEmond/blitz-2023-inscription/commit/eecbe2dcd00c21faced192e7863aea2512c19631) | 165ms | 2.7% |
+| + Graph adjacency as arrays | [8076e8e](https://github.com/JesseEmond/blitz-2023-inscription/commit/8076e8ee8fb8fa469c0e25f8cba9dbcb828d8779) | 145ms | 11.7% |
+
+_Note that the final result is slightly faster than my final version at
+HEAD because I ended up with other changes to the graph to focus on
+Held-Karp instead._
+
+TODOs from this exercise:
+- do update_weights on new
+- do +min on pheromones init
+- get rid of get_unchecked weights -- slower
+- remove * instead of if -- no diff
+- remove precomputed tick_offset -- no diff
 
 ### Held-Karp Optimizations
 Comparing incremental improvements on `simple_held_karp.rs` vs.
