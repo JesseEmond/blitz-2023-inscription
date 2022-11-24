@@ -1,5 +1,6 @@
 // Implementation of ant_colony_optimization.rs, without speed optimizations.
 
+use arrayvec::ArrayVec;
 use rand::{Rng, SeedableRng};
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::rngs::SmallRng;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 
 use crate::ant_colony_optimization::{HyperParams};
 use crate::challenge::{Solution, eval_score};
+use crate::challenge_consts::{MAX_PORTS, TICK_OFFSETS};
 use crate::simple_graph::{SimpleGraph, VertexId};
 use crate::solvers::{AntColonyOptimizationSolver};
 
@@ -22,18 +24,33 @@ pub struct Ant {
     pub seen: u64,
 }
 
+// [to]
+type EdgeWeights = ArrayVec<f32, MAX_PORTS>;
+// [offset][to]
+type EtaPows = ArrayVec<ArrayVec<f32, MAX_PORTS>, TICK_OFFSETS>;
+
+// Holds information coming out of a vertex, used for optimization purposes to
+// have better cache locality.
+pub struct VertexTrails {
+    // τ, pheromone strength of each edge.
+    pheromones: ArrayVec<f32, MAX_PORTS>,
+
+    // For a given tick offset, a list of pre-computed weights, one for each
+    // edge. Used in sampling.
+    // offset_trail_weights[tick_offset][to]
+    offset_trail_weights: ArrayVec<EdgeWeights, TICK_OFFSETS>,
+    // Pre-computed per-edge eta^beta, for each tick offset.
+    // eta_pows[tick_offset][to]
+    eta_pows: EtaPows,
+}
+
 pub struct Colony {
     pub hyperparams: HyperParams,
     pub graph: Arc<SimpleGraph>,
 
-    // pheromones[from][to]
-    pheromones: Vec<Vec<f32>>,
-    // Pre-computed per-edge eta^beta, for each tick offset.
-    // eta_pows[from][offset][to]
-    eta_pows: Vec<Vec<Vec<f32>>>,
-    // Cached per-edge weights, for each tick offset.
-    // weights[from][offset][to]
-    weights: Vec<Vec<Vec<f32>>>,
+    // Trails for each vertex.
+    pub trails: Vec<VertexTrails>,
+
     global_best: Option<Ant>,
     rng: SmallRng,
 }
@@ -155,49 +172,91 @@ impl Ant {
     }
 }
 
-impl Colony {
-    pub fn new(graph: &Arc<SimpleGraph>, hyperparams: HyperParams) -> Self {
+impl VertexTrails {
+    pub fn new(from: VertexId, graph: &SimpleGraph,
+               hyperparams: &HyperParams) -> Self {
+        let eta_pows: EtaPows = (0..TICK_OFFSETS).map(|offset| {
+            (0..graph.ports.len()).map(|to| {
+                let to = to as VertexId;
+                if from != to {
+                    let distance = graph.cost(offset as u8, from, to);
+                    let beta = hyperparams.heuristic_power;
+                    let eta = 1.0 / (distance as f32);
+                    eta.powf(beta)
+                } else {
+                    0f32
+                }
+            }).collect()
+        }).collect();
         // TODO: this should have + min, but matching final version to get the
         // same values.
         let base_pheromones = hyperparams.pheromones_init_ratio * (
             hyperparams.max_pheromones - hyperparams.min_pheromones);
-        let pheromones = vec![
-            vec![base_pheromones; graph.ports.len()];
-            graph.ports.len()];
-        let eta_pows: Vec<Vec<Vec<f32>>> = (0..graph.ports.len()).map(|from| {
-            let from = from as VertexId;
-            (0..graph.tick_offsets).map(|offset| {
-                (0..graph.ports.len()).map(|to| {
-                    let to = to as VertexId;
-                    if from != to {
-                        let distance = graph.cost(offset as u8, from, to);
-                        let beta = hyperparams.heuristic_power;
-                        let eta = 1.0 / (distance as f32);
-                        eta.powf(beta)
-                    } else {
-                        0f32
-                    }
-                }).collect()
-            }).collect()
-        }).collect();
-        let weights_unset = vec![
-            vec![vec![1f32; graph.ports.len()]; graph.tick_offsets];
-            graph.ports.len()];
-        let mut colony = Colony {
+        let weights_unset = ArrayVec::from_iter(
+                vec![ArrayVec::from_iter(vec![1.0; graph.ports.len()]); TICK_OFFSETS]);
+        let mut trails = VertexTrails {
+            pheromones: ArrayVec::from_iter(vec![base_pheromones; graph.ports.len()]),
+            offset_trail_weights: weights_unset,
+            eta_pows,
+        };
+        for to in 0..graph.ports.len() {
+            trails.update_weights(to as VertexId);
+        }
+        trails
+    }
+
+    pub fn evaporate_add(&mut self, to: VertexId, evaporation: f32, add: f32,
+                         hyperparams: &HyperParams) {
+        let pheromones = self.pheromones[to as usize];
+        self.set_pheromones(
+            to, (1.0 - evaporation) * pheromones + evaporation * add,
+            hyperparams);
+    }
+
+    pub fn evaporate(&mut self, to: VertexId, evaporation: f32,
+                     hyperparams: &HyperParams) {
+        let pheromones = self.pheromones[to as usize];
+        self.set_pheromones(to, pheromones * (1.0 - evaporation), hyperparams);
+    }
+
+    pub fn add(&mut self, to: VertexId, add: f32, hyperparams: &HyperParams) {
+        let pheromones = self.pheromones[to as usize];
+        self.set_pheromones(to, pheromones + add, hyperparams);
+    }
+
+    pub fn set_pheromones(&mut self, to: VertexId, pheromones: f32,
+                          hyperparams: &HyperParams) {
+        let pheromones = pheromones.clamp(hyperparams.min_pheromones,
+                                          hyperparams.max_pheromones);
+        self.pheromones[to as usize] = pheromones;
+        self.update_weights(to);
+    }
+
+    pub fn weights(&self, tick_offset: u8) -> &EdgeWeights {
+        &self.offset_trail_weights[tick_offset as usize]
+    }
+
+    fn update_weights(&mut self, to: VertexId) {
+        for offset in 0..TICK_OFFSETS {
+            let pheromones = self.pheromones[to as usize];
+            let eta_pow = self.eta_pows[offset][to as usize];
+            self.offset_trail_weights[offset][to as usize] = pheromones * eta_pow;
+        }
+    }
+}
+
+impl Colony {
+    pub fn new(graph: &Arc<SimpleGraph>, hyperparams: HyperParams) -> Self {
+        let trails = (0..graph.ports.len())
+            .map(|from| VertexTrails::new(from as VertexId, &graph, &hyperparams))
+            .collect();
+        Colony {
             graph: graph.clone(),
             rng: SmallRng::seed_from_u64(hyperparams.seed),
-            weights: weights_unset,
             global_best: None,
-            eta_pows,
+            trails,
             hyperparams,
-            pheromones,
-        };
-        for from in 0..graph.ports.len() {
-            for to in 0..graph.ports.len() {
-                colony.update_weights(from as VertexId, to as VertexId);
-            }
         }
-        colony
     }
 
     pub fn run(&mut self) -> Solution {
@@ -230,9 +289,9 @@ impl Colony {
             // Local trail update
             let pheromone_add = self.hyperparams.local_evaporation_rate *
                 self.hyperparams.min_pheromones;
-            self.evaporate_add_pheromones(
-                ant.current, to, self.hyperparams.local_evaporation_rate,
-                pheromone_add);
+            self.trails[ant.current as usize].evaporate_add(
+                to, self.hyperparams.local_evaporation_rate, pheromone_add,
+                &self.hyperparams);
             ant.visit(to, &self.graph);
         }
         ant.finalize_path(&self.graph);
@@ -241,7 +300,7 @@ impl Colony {
 
     fn sample_option(&mut self, ant: &Ant) -> Option<VertexId> {
         let tick_offset = self.graph.tick_offset(ant.tick);
-        let weights = self.weights[ant.current as usize][tick_offset as usize]
+        let weights = self.trails[ant.current as usize].weights(tick_offset)
             .iter().enumerate()
             .map(|(to, &w)| {
                 let to = to as VertexId;
@@ -293,8 +352,8 @@ impl Colony {
                 if from == to {
                     continue;
                 }
-                self.evaporate_pheromones(
-                    from, to, self.hyperparams.evaporation_rate);
+                self.trails[from as usize].evaporate(
+                    to, self.hyperparams.evaporation_rate, &self.hyperparams);
             }
         }
 
@@ -305,41 +364,8 @@ impl Colony {
         let mut from = best.start;
         let best_path = best.path.clone();
         for to in best_path {
-            self.add_pheromones(from, to, pheromone_add);
+            self.trails[from as usize].add(to, pheromone_add, &self.hyperparams);
             from = to;
-        }
-    }
-
-    fn evaporate_add_pheromones(
-        &mut self, from: VertexId, to: VertexId, evaporation: f32, add: f32) {
-        let pheromones = self.pheromones[from as usize][to as usize];
-        self.set_pheromones(
-            from, to, (1.0 - evaporation) * pheromones + evaporation * add);
-    }
-
-    fn evaporate_pheromones(&mut self, from: VertexId, to: VertexId,
-                            evaporation: f32) {
-        let pheromones = self.pheromones[from as usize][to as usize];
-        self.set_pheromones(from, to, pheromones * (1.0 - evaporation));
-    }
-
-    fn add_pheromones(&mut self, from: VertexId, to: VertexId, add: f32) {
-        let pheromones = self.pheromones[from as usize][to as usize];
-        self.set_pheromones(from, to, pheromones + add);
-    }
-
-    fn set_pheromones(&mut self, from: VertexId, to: VertexId, pheromones: f32) {
-        let pheromones = pheromones.clamp(self.hyperparams.min_pheromones,
-                                          self.hyperparams.max_pheromones);
-        self.pheromones[from as usize][to as usize] = pheromones;
-        self.update_weights(from, to);
-    }
-
-    fn update_weights(&mut self, from: VertexId, to: VertexId) {
-        for offset in 0..self.graph.tick_offsets {
-            let pheromones = self.pheromones[from as usize][to as usize];
-            let eta_pow = self.eta_pows[from as usize][offset][to as usize];
-            self.weights[from as usize][offset][to as usize] = pheromones * eta_pow;
         }
     }
 }
