@@ -18,7 +18,7 @@ use crate::solvers::{AntColonyOptimizationSolver};
 pub struct Ant {
     pub start: VertexId,
     pub current: VertexId,
-    pub path: Vec<VertexId>,
+    pub path: ArrayVec<VertexId, MAX_PORTS>,
     pub tick: u16,
     pub score: i32,
     pub seen: u64,
@@ -61,7 +61,7 @@ impl Ant {
             start: 0,
             current: 0,
             tick: 0,
-            path: Vec::new(),
+            path: ArrayVec::new(),
             score: 0,
             seen: 0,
         }
