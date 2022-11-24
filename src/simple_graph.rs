@@ -2,6 +2,7 @@
 use std::collections::{HashSet};
 use std::sync::{Arc};
 
+use crate::challenge_consts::{MAX_PORTS, TICK_OFFSETS};
 use crate::game_interface::{GameTick};
 use crate::pathfinding::{Path, Pos};
 use crate::simple_pathfinding::SimplePathfinder;
@@ -11,7 +12,7 @@ pub type VertexId = u8;
 
 pub struct SimpleGraph {
     // adjacency[from][to][tick_offset]
-    adjacency: Vec<Vec<Vec<u8>>>,
+    adjacency: [[[u8; TICK_OFFSETS]; MAX_PORTS]; MAX_PORTS],
     // paths[from][to][tick_offset]
     pub paths: Vec<Vec<Vec<Path>>>,
     pub ports: Vec<Pos>,
@@ -26,9 +27,7 @@ impl SimpleGraph {
         let tick_offsets = game_tick.tide_schedule.len();
         let all_ports: Vec<Pos> = game_tick.map.ports.iter()
             .map(Pos::from_position).collect();
-        let mut adjacency = vec![
-            vec![vec![Cost::MAX; tick_offsets]; all_ports.len()];
-            all_ports.len()];
+        let mut adjacency = [[[Cost::MAX; TICK_OFFSETS]; MAX_PORTS]; MAX_PORTS];
         let placeholder_path = Path {
             steps: Vec::new(), cost: 0, goal: Pos { x: 0, y: 0 }
         };
