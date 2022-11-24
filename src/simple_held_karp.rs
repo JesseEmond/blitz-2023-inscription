@@ -7,7 +7,7 @@ use crate::challenge::{Solution, eval_score};
 use crate::challenge_consts::{MAX_PORTS};
 use crate::simple_graph::{SimpleGraph, VertexId};
 
-const MAX_MASK_ITEMS: usize = MAX_PORTS;
+const MAX_MASK_ITEMS: usize = MAX_PORTS - 1;
 // Size needed for an array indexed by masks.
 const NUM_MASKS: usize = 1 << MAX_MASK_ITEMS;
 
@@ -57,15 +57,19 @@ impl HeldKarp {
     pub fn traveling_salesman(
         &mut self, graph: &SimpleGraph, start: VertexId) -> Tour {
         let start_tick = graph.start_tick + 1;  // time to dock spawning port
-        self.g = vec![vec![Cost::MAX; graph.ports.len()]; NUM_MASKS];
-        self.p = vec![vec![VertexId::MAX; graph.ports.len()]; NUM_MASKS];
+        self.g = vec![vec![Cost::MAX; MAX_MASK_ITEMS]; NUM_MASKS];
+        self.p = vec![vec![VertexId::MAX; MAX_MASK_ITEMS]; NUM_MASKS];
 
-        let others: Vec<VertexId> = (0..graph.ports.len())
-            .map(|v| v as VertexId).filter(|&v| v != start).collect();
+        // We convert IDs as if there was no 'start'.
+        // This stores all nodes except 'start' (in "translated" space).
+        let nodes: Vec<VertexId> = (0..MAX_MASK_ITEMS)
+            .map(|v| v as VertexId).collect();
 
         // For |S|=1 (S={k}), smallest cost is the cost of start->k.
-        for k in &others {
-            let cost = graph.cost(graph.tick_offset(start_tick), start, *k) as Cost;
+        for k in &nodes {
+            let cost = graph.cost(
+                graph.tick_offset(start_tick),
+                start, self.untranslate(start, *k)) as Cost;
             let mask = Mask::from_set(&vec![*k]);
             // +1 to dock
             self.g[mask.0 as usize][*k as usize] = start_tick + cost + 1;
@@ -75,15 +79,18 @@ impl HeldKarp {
         // For |S|=s, smallest cost depends on |S'|=s-1 values of g(S', k).
         let max_set_items = graph.ports.len() - 1;
         for s in 2..=max_set_items {
-            for set in others.iter().cloned().combinations(s) {
+            for set in nodes.iter().cloned().combinations(s) {
                 let mask = Mask::from_set(&set);
                 for k in &set {
                     let set_minus_k = set.iter().cloned().filter(|&v| v != *k).collect();
                     let mask_minus_k = Mask::from_set(&set_minus_k);
-                    let (min_cost, min_vertex) = set_minus_k.iter().cloned().map(|m| {
+                    let (min_cost, min_vertex) = set_minus_k.iter().cloned()
+                        .map(|m| {
                         let current_cost = self.g[mask_minus_k.0 as usize][m as usize];
                         let m_k_cost = graph.cost(
-                            graph.tick_offset(current_cost), m, *k) as Cost;
+                            graph.tick_offset(current_cost),
+                            self.untranslate(start, m),
+                            self.untranslate(start, *k)) as Cost;
                         let cost = current_cost + m_k_cost + 1;  // +1 to dock
                         (cost, m)
                     }).min_by_key(|&(cost, _)| cost).unwrap();
@@ -94,17 +101,18 @@ impl HeldKarp {
         }
 
         // Find the best tour by checking paths back to the start.
-        let mask_all = Mask::from_set(&others);
-        let (total_cost, last_city) = others.iter().cloned().map(|k| {
+        let mask_all = Mask::from_set(&nodes);
+        let (total_cost, last_city) = nodes.iter().cloned().map(|k| {
             let current_cost = self.g[mask_all.0 as usize][k as usize];
             let k_start_cost = graph.cost(
-                graph.tick_offset(current_cost), k, start) as Cost;
+                graph.tick_offset(current_cost),
+                self.untranslate(start, k), start) as Cost;
             // Note: no +1 for docking, the last dock tick doesn't count.
             let cost = current_cost + k_start_cost;
             (cost, k)
         }).min_by_key(|&(cost, _)| cost).unwrap();
 
-        let vertices = self.backtrack(start, last_city, others);
+        let vertices = self.backtrack(start, last_city, nodes);
         Tour { cost: total_cost, vertices }
     }
 
@@ -115,7 +123,7 @@ impl HeldKarp {
         vertices.push(start);
         let mut vertex = last;
         while !set.is_empty() {
-            vertices.push(vertex);
+            vertices.push(self.untranslate(start, vertex));
             let mask = Mask::from_set(&set);
             let next = self.p[mask.0 as usize][vertex as usize];
             set.retain(|&v| v != vertex);
@@ -124,6 +132,12 @@ impl HeldKarp {
         vertices.push(start);
         vertices.reverse();
         vertices
+    }
+
+    /// Sets are in a space where 'start' is removed. This utility converts back
+    /// to the proper vertex IDs.
+    fn untranslate(&self, start: VertexId, v: VertexId) -> VertexId {
+        if v < start { v } else { v + 1 }
     }
 }
 
