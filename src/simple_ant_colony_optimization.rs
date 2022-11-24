@@ -28,6 +28,9 @@ pub struct Colony {
 
     // pheromones[from][to]
     pheromones: Vec<Vec<f32>>,
+    // Pre-computed per-edge eta^beta, for each tick offset.
+    // eta_pows[from][offset][to]
+    eta_pows: Vec<Vec<Vec<f32>>>,
     global_best: Option<Ant>,
     rng: SmallRng,
 }
@@ -158,10 +161,27 @@ impl Colony {
         let pheromones = vec![
             vec![base_pheromones; graph.ports.len()];
             graph.ports.len()];
+        let eta_pows: Vec<Vec<Vec<f32>>> = (0..graph.ports.len()).map(|from| {
+            let from = from as VertexId;
+            (0..graph.tick_offsets).map(|offset| {
+                (0..graph.ports.len()).map(|to| {
+                    let to = to as VertexId;
+                    if from != to {
+                        let distance = graph.cost(offset as u8, from, to);
+                        let beta = hyperparams.heuristic_power;
+                        let eta = 1.0 / (distance as f32);
+                        eta.powf(beta)
+                    } else {
+                        0f32
+                    }
+                }).collect()
+            }).collect()
+        }).collect();
         Colony {
             graph: graph.clone(),
             rng: SmallRng::seed_from_u64(hyperparams.seed),
             global_best: None,
+            eta_pows,
             hyperparams,
             pheromones,
         }
@@ -215,12 +235,10 @@ impl Colony {
                 to != ant.current && ant.valid_option(cost, to, &self.graph)
             }).collect();
         let weights: Vec<f32> = options.iter().map(|&to| {
-            let beta = self.hyperparams.heuristic_power;
-            let distance = self.graph.cost(
-                self.graph.tick_offset(ant.tick), ant.current, to);
-            let eta = 1.0 / (distance as f32);
-            let pheromones = self.pheromones[ant.current as usize][to as usize];
-            pheromones * eta.powf(beta)
+            let from = ant.current;
+            let pheromones = self.pheromones[from as usize][to as usize];
+            let offset = self.graph.tick_offset(ant.tick);
+            pheromones * self.eta_pows[from as usize][offset as usize][to as usize]
         }).collect();
         if options.is_empty() {
             None
