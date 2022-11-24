@@ -338,6 +338,7 @@ impl VertexTrails {
         VertexTrails {
             vertex: vertex_id,
             pheromones: ArrayVec::from_iter(vec![base_pheromones; graph.ports.len()]),
+            // TODO: this should be computed
             offset_trail_weights: ArrayVec::from_iter(
                 vec![ArrayVec::from_iter(vec![1.0; graph.ports.len()]); TICK_OFFSETS]),
             min: hyperparams.min_pheromones,

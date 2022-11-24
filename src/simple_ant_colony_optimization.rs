@@ -1,6 +1,5 @@
 // Implementation of ant_colony_optimization.rs, without speed optimizations.
 
-use arrayvec::ArrayVec;
 use rand::{Rng, SeedableRng};
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::rngs::SmallRng;
@@ -10,7 +9,6 @@ use std::sync::Arc;
 
 use crate::ant_colony_optimization::{HyperParams};
 use crate::challenge::{Solution, eval_score};
-use crate::challenge_consts::{MAX_PORTS};
 use crate::simple_graph::{SimpleGraph, VertexId};
 use crate::solvers::{AntColonyOptimizationSolver};
 
@@ -33,6 +31,9 @@ pub struct Colony {
     // Pre-computed per-edge eta^beta, for each tick offset.
     // eta_pows[from][offset][to]
     eta_pows: Vec<Vec<Vec<f32>>>,
+    // Cached per-edge weights, for each tick offset.
+    // weights[from][offset][to]
+    weights: Vec<Vec<Vec<f32>>>,
     global_best: Option<Ant>,
     rng: SmallRng,
 }
@@ -179,14 +180,24 @@ impl Colony {
                 }).collect()
             }).collect()
         }).collect();
-        Colony {
+        let weights_unset = vec![
+            vec![vec![1f32; graph.ports.len()]; graph.tick_offsets];
+            graph.ports.len()];
+        let mut colony = Colony {
             graph: graph.clone(),
             rng: SmallRng::seed_from_u64(hyperparams.seed),
+            weights: weights_unset,
             global_best: None,
             eta_pows,
             hyperparams,
             pheromones,
+        };
+        for from in 0..graph.ports.len() {
+            for to in 0..graph.ports.len() {
+                colony.update_weights(from as VertexId, to as VertexId);
+            }
         }
+        colony
     }
 
     pub fn run(&mut self) -> Solution {
@@ -230,21 +241,17 @@ impl Colony {
 
     fn sample_option(&mut self, ant: &Ant) -> Option<VertexId> {
         let tick_offset = self.graph.tick_offset(ant.tick);
-        let weights: ArrayVec<f32, MAX_PORTS> =
-            ArrayVec::from_iter(
-                (0..self.graph.ports.len())
-                .map(|to| {
-                    let to = to as VertexId;
-                    let cost = self.graph.cost(tick_offset, ant.current, to);
-                    let valid = ant.valid_option(cost, to, &self.graph);
-                    if valid {
-                        let pheromones = self.pheromones[ant.current as usize][to as usize];
-                        let eta_pow = self.eta_pows[ant.current as usize][tick_offset as usize][to as usize];
-                        pheromones * eta_pow
-                    } else {
-                        0f32
-                    }
-                }));
+        let weights = self.weights[ant.current as usize][tick_offset as usize]
+            .iter().enumerate()
+            .map(|(to, &w)| {
+                let to = to as VertexId;
+                let cost = self.graph.cost(tick_offset, ant.current, to);
+                if ant.valid_option(cost, to, &self.graph) {
+                    w
+                } else {
+                    0f32
+                }
+            });
         let rand_valid_option = |rng: &mut SmallRng| -> Option<VertexId> {
             let all_options: Vec<VertexId> = (0..self.graph.ports.len())
                 .map(|v| v as VertexId)
@@ -260,7 +267,7 @@ impl Colony {
         };
         if self.rng.gen::<f32>() < self.hyperparams.exploitation_probability {
             // Greedy exploitation
-            let to = weights.iter().enumerate()
+            let to = weights.enumerate()
                 .max_by(|(_, w1), (_, w2)| w1.partial_cmp(w2).unwrap_or(Ordering::Equal))
                 .map(|(idx, _)| idx).unwrap() as VertexId;
             let cost = self.graph.cost(tick_offset, ant.current, to);
@@ -325,6 +332,15 @@ impl Colony {
         let pheromones = pheromones.clamp(self.hyperparams.min_pheromones,
                                           self.hyperparams.max_pheromones);
         self.pheromones[from as usize][to as usize] = pheromones;
+        self.update_weights(from, to);
+    }
+
+    fn update_weights(&mut self, from: VertexId, to: VertexId) {
+        for offset in 0..self.graph.tick_offsets {
+            let pheromones = self.pheromones[from as usize][to as usize];
+            let eta_pow = self.eta_pows[from as usize][offset][to as usize];
+            self.weights[from as usize][offset][to as usize] = pheromones * eta_pow;
+        }
     }
 }
 
