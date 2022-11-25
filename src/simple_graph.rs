@@ -12,7 +12,7 @@ pub type Cost = u8;
 pub type VertexId = u8;
 
 pub struct SimpleGraph {
-    // adjacency[from][to][tick_offset]
+    // adjacency[to][from][tick_offset]
     adjacency: [[[Cost; TICK_OFFSETS]; MAX_PORTS]; MAX_PORTS],
     // paths[from][to][tick_offset]
     pub paths: Vec<Vec<Vec<Path>>>,
@@ -53,7 +53,7 @@ impl SimpleGraph {
                 let offset_paths = all_offsets_paths.get(&all_ports[to]).unwrap();
                 for (offset, path) in offset_paths.iter().enumerate() {
                     paths[from][to][offset] = path.clone();
-                    adjacency[from][to][offset] = path.cost as Cost;
+                    adjacency[to][from][offset] = path.cost as Cost;
                 }
             }
         }
@@ -68,7 +68,7 @@ impl SimpleGraph {
     }
 
     pub fn cost(&self, tick_offset: u8, from: VertexId, to: VertexId) -> Cost {
-        self.adjacency[from as usize][to as usize][tick_offset as usize]
+        self.adjacency[to as usize][from as usize][tick_offset as usize]
     }
 
     pub fn path(&self, tick_offset: u8, from: VertexId, to: VertexId) -> &Path {
