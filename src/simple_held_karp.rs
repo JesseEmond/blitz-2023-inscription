@@ -52,13 +52,13 @@ struct FlatSubsetsHelper {
     /// Precomputed binomial values n-choose-k.
     pub binomial: Binomial,
     /// For a subset size, the start index in a flat array for the subset data.
-    subset_starts: Vec<usize>,
+    subset_starts: [usize; MAX_PORTS],
 }
 
 /// Precomputed binomial values (n-choose-k).
 struct Binomial {
     /// binomials[n][k] gives the value for n-choose-k.
-    binomials: Vec<Vec<usize>>,
+    binomials: [[usize; MAX_PORTS]; MAX_PORTS],
 }
 
 /// Helper to hold a current set of vertices ('S' or 'S \ {k}' in Held-Karp).
@@ -168,7 +168,7 @@ impl HeldKarp {
 impl FlatSubsetsHelper {
     fn new() -> Self {
         let binomial = Binomial::new();
-        let mut subset_starts = vec![0usize; MAX_PORTS];
+        let mut subset_starts = [0usize; MAX_PORTS];
         for i in 1..MAX_PORTS {
             let prev_size = (i-1) * binomial.n_choose_k(MAX_MASK_ITEMS, i-1);
             subset_starts[i] = subset_starts[i-1] + prev_size;
@@ -195,7 +195,7 @@ impl FlatSubsetsHelper {
 
 impl Binomial {
     fn new() -> Self {
-        let mut binomial = vec![vec![0usize; MAX_PORTS]; MAX_PORTS];
+        let mut binomial = [[0usize; MAX_PORTS]; MAX_PORTS];
         for n in 0..MAX_PORTS {
             binomial[n][0] = 1;
             binomial[n][n] = 1;
