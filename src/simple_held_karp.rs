@@ -255,9 +255,14 @@ impl Combination {
         // go to the next one by setting the kth element of 'S\{k}' to be S[k],
         // which gives us the next k being missing (e.g. for k=0, becomes
         // {0, 2, ..., s-1}).
+        let s = self.size;
+        // Do flat index computations in-place on only the edited element as an
+        // optimization.
+        self.index_base -= s * flat_subsets_helper.binomial.n_choose_k(
+            self.elements[k] as usize, k+1);
         self.elements[k] = kth_elem;
-        self.index_base = flat_subsets_helper.flat_index(
-            &self.elements, self.size);
+        self.index_base += s * flat_subsets_helper.binomial.n_choose_k(
+            self.elements[k] as usize, k+1);
     }
 
     /// If we are past the final combination of our current size.
