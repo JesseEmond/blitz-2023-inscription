@@ -122,7 +122,7 @@ impl SearchSpace {
                 let lower_bound = parent.lower_bound + cost - correction;
                 nodes.push(Node { lower_bound, tick, vertex: k });
             }
-            // TODO: helps at all?
+            // TODO: helps at all to sort here?
             nodes.sort_by_key(|n| n.lower_bound);
             for node in &nodes {
                 if node.lower_bound >= self.best_tour.cost {

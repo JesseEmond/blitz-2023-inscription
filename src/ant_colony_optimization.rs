@@ -23,7 +23,7 @@ use crate::pathfinding::{Pos};
 // - Add pheromones from all ants
 // - Update pheromones using local best with probability
 // - Update pheromones considering global best only after X% iterations
-// - global score update on equality
+// - global best update ant on equality
 
 // TODO: try
 // - What is missing from ~vanilla AS?

@@ -1,10 +1,3 @@
-// TODOs
-// - implement "simple" pathfinding
-// - implement "simple" held-karp
-// - pathfinding optimizations ablation
-// - graph optimizations ablation
-// - held-karp optimizations ablation
-// - write-up
 use log::info;
 use std::time::{Instant};
 use std::sync::Arc;

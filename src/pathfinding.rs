@@ -9,7 +9,6 @@ use std::iter;
 use crate::challenge_consts::{HEIGHT, TICK_OFFSETS, WIDTH};
 use crate::game_interface::{Map, Position};
 
-// TODO: consider packing as u32?
 #[derive(Serialize, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Copy, Clone)]
 pub struct Pos {
     pub x: u16,
@@ -158,6 +157,7 @@ impl std::fmt::Debug for State {
 
 type CameFrom = FxHashMap<State, State>;
 type CostSoFar = FxHashMap<State, u16>;
+// TODO: use Vec instead of hashset?
 pub type Targets = FxHashSet<Pos>;
 
 fn heuristic(src: &Pos, targets: &Targets) -> u16 {
@@ -202,7 +202,6 @@ impl Pathfinder {
         Some(Path { steps, cost, goal: *goal })
     }
 
-    // TODO: use Vec instead of hashset?
     fn a_star_search(
         &mut self, start: &Pos, targets: &Targets, tick: u16,
         stop_on_first: bool
@@ -245,7 +244,6 @@ impl Pathfinder {
                 }
                 // Updating frontier priorities, since our heuristic depends on
                 // the list of remaining goals and we just removed one.
-                // TODO: Faster to do h=0 (~Dijkstra) instead of handling this?
                 // Insert current (goal we just found) again, since its f-score
                 // also likely changed.
                 frontier.push(current, Reverse(0));

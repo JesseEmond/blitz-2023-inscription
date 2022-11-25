@@ -1,6 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use serde_json::{Value};
-use std::fs;
 use std::sync::Arc;
 
 use blitz_bot::game_interface::{GameTick};
@@ -12,10 +11,7 @@ use blitz_bot::solvers::{AntColonyOptimizationSolver, ExactTspSolver, Solver};
 
 
 fn make_game() -> Arc<GameTick> {
-    // Note this isn't great, we ideally shouldn't read from disk here.
-    let game_file = "./games/35334.json";
-    let game_json = fs::read_to_string(game_file)
-        .expect("Couldn't read game file");
+    let game_json = include_str!("../games/35334.json");
     let parsed: Value = serde_json::from_str(&game_json)
         .expect("Couldn't parse JSON in game file");
     let game = serde_json::from_value(parsed)
