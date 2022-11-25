@@ -1010,10 +1010,42 @@ The optimizations are:
 
 ## Code Overview
 
-TODO rust overview
+### Challenge
+- `main.rs`: parses command line args (e.g. pick solver), creates `Bot`, starts web socket client;
+- `client.rs`: interacts with the server, parses the incoming tick, gets an action from the `Bot`, sends it;
+- `game_interface.rs`/`game_interface_traits.rs`: from the starter kit, data structures for the challenge;
+- `challenge.rs`/`challenge_consts.rs`: helpers to score a `Solution`, constants for max values possible in practice;
 
-TODO benchmark overview
+### Bot
+- `bot.rs`: builds a `Graph`, calls a `Solver`, calls the `Macro` AI for planning, gets move from `Micro` AI;
+- `micro_ai.rs`: state machine to follow an exact path/dock/wait/spawn, picks `Direction` based on next step;
+- `macro_ai.rs`: follows a `Solution`, setting the `Micro` state to the current path we're on;
 
+### Solvers
+- `pathfinding.rs`: finds the shortest path between two points (or from one point to all others);
+- `graph.rs`: calls the `Pathfinder` to find the shortest path from one goal to the others, for every possible
+  tide offset, to build a `Graph` instance with pre-computed adjacency costs;
+- `solvers.rs`: APIs for planning a `Solution` based on a `Graph`, calls into other implementations (e.g. `HeldKarp`,
+  `AntColonyOptimization`);
+- TSP solvers:
+  - `held_karp.rs`: finds a tour using the Held-Karp algorithm;
+  - `ant_colony_optimization.rs`: finds a solution based on ants simulation;
+  - The greedy solver (nearest neighbor) is in `solvers.rs` directly;
+  - The optimal solver is in `solvers.rs`, it calls `HeldKarp` with a flag to consider all possible
+    shorter subsets;
+  - `branch_and_bound_tsp.rs`: exploration of a
+    [Branch and bound](https://en.wikipedia.org/wiki/Branch_and_bound)
+    approach to solving a TSP.
+    
+### Optimization
+- `simple_ant_colony_optimization.rs`/`simple_graph.rs`/`simple_held_karp.rs`/`simple_pathfinding.rs`: simpler implementations of each, to make it a bit easier to understand, and to do an optimization breakdown compared to the final optimized versions.
+- `benches/benchmark.rs`: benchmarks for graph creation, ant colony solver, and Held-Karp solver used when
+  profiling and evaluating optimizations.
+
+### Tooling
+- `bin/live_evaler.rs`: tool to check game files in a folder and auto-evals them with the optimal
+  solver to check if there was a better score we _could_ have obtained. It also deletes games under
+  a certain ports or score threshold, to only keep high score games on disk.
 - `games/`: folder of games collected while running on the Blitz server. Used to
   reproduce games locally for evaluation/sweeping purposes.
 - `tools/`: folder for tools to interact/iterate on the challenge. Here are the
@@ -1024,7 +1056,4 @@ TODO benchmark overview
   - `collect_games.py`: Launch games on the server and parse their logs to
     extract games and save them locally. Also used to play games in a loop for a
     chance for a better score;
-    - `live_evaler.rs`: Monitors a folder for new stored games, evaluates them
-    with a slow but powerful solver to estimate an upper bound of possible score
-    out of games seen so far.
   - `visualize_ants.py`: Plot visualizations of Ant Colony Optimization "ants".
