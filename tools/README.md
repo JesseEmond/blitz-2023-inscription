@@ -8,9 +8,9 @@ debugging/tuning.
 play one game while working on a bot, or multiple games to fully eval a bot
 or sweep hyperparameters.
 
-By default, it will play some fixed game, with ASCII visualization of the game.
+By default, it will play some fixed game, with ASCII visualization of the game:
 
-TODO: screencap of a game visualization?
+https://user-images.githubusercontent.com/1843555/204056237-54e3cea0-df9e-41e0-b81c-433a443c3af4.mp4
 
 ### Options
 - `python server.py --fast`: Hide the ASCII visualization, for faster games;
@@ -22,7 +22,7 @@ TODO: screencap of a game visualization?
   (e.g. number of ants, iterations, evaporation rate, etc.), using
   [Vizier](https://github.com/google/vizier) and evaluating on all available
   games in `../games`. For each Vizier suggestion, hyperparameters are written
-  to disk so that the launched bot picks them up.
+  to disk so that the launched bot can pick them up.
   - Can use `python server.py --sweep --gameid=5202` to sweep on a single game.
 
 ## Online Server Automation / Games Collection
@@ -46,7 +46,13 @@ does not save <20 ports games.
 
 ### Live Evaler
 
-TODO document, uniquely a rust binary
+Rust separate binary that runs the optimal solver on new games that appear in
+the given `games` directory. This is to be used in conjunction with
+`collect_games.py` to keep an eye on the best theoretical score seen so far,
+along with other statistics.
+
+It also auto-deletes game files below a fixed number of ports or score, to
+save disk space and only keep high-potential games for offline evaluation.
 
 ## Visualize Ants
 [`visualize_ants.py`](visualize_ants.py) parses debug logs from a run with Ant
@@ -55,12 +61,11 @@ each iteration.
 
 It shows the local & global best ant paths, the ant paths taken
 in aggregate during an iteration, the pheromone trails, the heuristic values,
-and the sampling weights.
+and the sampling weights:
 
-Note that the debug logs parsing is very very crude, and it would be much better
-if the bot wrote the information in e.g. JSON and it got parsed here instead.
+![AntColonyOptimization](https://user-images.githubusercontent.com/1843555/202929678-0232e18e-fa16-4965-b585-666b990c23d7.gif)
 
-TODO: produce gif of iterations and include here?
+See the top-level README for a description of the shown plots.
 
 ## Sweep Analysis
 [`analyze_sweep.py`](analyze_sweep.py) analyzes logs from a local server sweep
@@ -74,7 +79,9 @@ with:
 python -u server.py --sweep | tee /tmp/sweep_logs.txt
 ```
 
-TODO: include sweep param example screenshot that suggested a narrower range
+Here's an example visualization, that showed that we can maybe reduce the range
+for `beta` values:
+![SweepAnalysis](https://user-images.githubusercontent.com/1843555/202930568-c71cd220-7a3e-4680-8f90-7de2a7799a2a.png)
 
 ## Leaderboard Analysis
 [`leaderboard.py`](leaderboard.py) interacts with the server's graphql API to
@@ -91,6 +98,8 @@ along with some last N games stats for my team & the current top team.
 ## Other Minor Utils
 - [`seen_games.py`](seen_games.py): contains a hard-coded `GameTick` from a
   server game, used by default on the local server.
+- [`prepare_version.sh`](prepare_version.sh): helper script to produce a
+  minimal zip that can be uploaded to the server.
 - [`hyperparams.py`](hyperparams.py): data structure for hyperparameters for
   Ant Colony Optimization. Written to disk when sweeping. Must match the
   expected format by the matching struct in the Rust code.
