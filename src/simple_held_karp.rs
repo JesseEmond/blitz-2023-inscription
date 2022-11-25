@@ -1,9 +1,10 @@
 // Implementation of held_karp.rs, without optimizations.
 
-use std::sync::{Arc};
+use std::sync::{mpsc, Arc};
+use std::thread;
 
 use crate::challenge::{Solution, eval_score};
-use crate::challenge_consts::{MAX_PORTS};
+use crate::challenge_consts::{MAX_PORTS, NUM_THREADS};
 use crate::simple_graph::{SimpleGraph, VertexId};
 
 const MAX_MASK_ITEMS: usize = MAX_PORTS - 1;
@@ -26,10 +27,30 @@ struct Tour {
 }
 
 fn held_karp(graph: &Arc<SimpleGraph>) -> Option<Solution> {
-    let mut held_karp = HeldKarp::new();
-    let best_tour = (0..graph.ports.len())
-        .map(|v| held_karp.traveling_salesman(&graph, v as VertexId))
-        .min_by_key(|tour| tour.cost).unwrap();
+    let mut best_tour = Tour { cost: Cost::MAX, vertices: Vec::new() };
+    let mut handles = vec![];
+    let (tx, rx) = mpsc::channel();
+    for i in 0..NUM_THREADS {
+        let tx = tx.clone();
+        let graph = graph.clone();
+        handles.push(thread::spawn(move || {
+            let mut held_karp = HeldKarp::new();
+            for start in (i..graph.ports.len()).step_by(NUM_THREADS) {
+                let start = start as VertexId;
+                let full_tour = held_karp.traveling_salesman(&graph, start);
+                tx.send(full_tour).unwrap();
+            }
+        }));
+    }
+    drop(tx);  // Drop the last sender, wait until all threads are done.
+    while let Ok(tour) = rx.recv() {
+        if tour.score() > best_tour.score() {
+            best_tour = tour;
+        }
+    }
+    for handle in handles {
+        handle.join().unwrap();
+    }
     best_tour.to_solution(&graph)
 }
 
