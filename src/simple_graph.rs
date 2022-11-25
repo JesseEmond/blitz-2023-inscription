@@ -68,7 +68,9 @@ impl SimpleGraph {
     }
 
     pub fn cost(&self, tick_offset: u8, from: VertexId, to: VertexId) -> Cost {
-        self.adjacency[to as usize][from as usize][tick_offset as usize]
+        unsafe {
+            *self.adjacency.get_unchecked(to as usize).get_unchecked(from as usize).get_unchecked(tick_offset as usize)
+        }
     }
 
     pub fn path(&self, tick_offset: u8, from: VertexId, to: VertexId) -> &Path {
