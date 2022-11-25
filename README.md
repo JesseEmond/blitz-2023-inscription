@@ -960,7 +960,9 @@ Held-Karp instead._
 
 ### Held-Karp Optimizations
 Comparing incremental improvements on `simple_held_karp.rs` vs.
-`held_karp.rs`.
+`held_karp.rs`, in branch `optimization-ablation-held-karp`.
+
+TODO link branch
 
 Going from the non-optimized "simple" version to the final one
 on the Held-Karp benchmark gives a **99%** relative
@@ -970,25 +972,43 @@ improvement in compute time (110.1s -> 1.1s), i.e. it is
 The optimizations are:
 - Store `g` and `p` values in a contiguous array instead of a
   `HashMap` (index by `mask` treated as an integer);
+- Exclude the `start` vertex from masks & storage, by "translating"
+  vertex IDs as if 'start' wasn't part of the vertices.
 - Generate mask combinations of same size with
-  [bit hacks](https://graphics.stanford.edu/~seander/bithacks.html#NextBitPermutation);
+  [bit hacks](https://graphics.stanford.edu/~seander/bithacks.html#NextBitPermutation),
+  avoid going to Vecs at all;
 - In the flattened contiguous array, store masks of similar
   size (number of elements in the set) closer in memory, for
   better caching (optimization
-  [from here](https://www.math.uwaterloo.ca/~bico/papers/comp_chapterDP.pdf)).
-- Multithreading, computing multiple start options in parallel;
+  [from here](https://www.math.uwaterloo.ca/~bico/papers/comp_chapterDP.pdf));
+- Use arrays where possible (for graph too);
 - Change graph layout to be `adjacency[to][from][offset]` to
   follow access patterns from Held-Karp more closely;
 - When computing index in flattened array in hot loop, compute
-  offset from previous value instead of recomputing full expression;
-- Use arrays/`ArrayVec`s where possible, use challenge consts for
-  dims/loops;
-- Precompute "translation" from vertex index to
-  index-without-start;
-- Use `get_unchecked` in graph adjacency cost accesses.
+  index offset from previous value instead of recomputing full
+  expression;
+- Use `get_unchecked` in graph adjacency cost accesses;
+- Multithreading, computing multiple start options in parallel.
 
-TODO(emond): Include table of relative optimization
-ablation, adding one at a time incrementally
+TODO link commits
+
+| Optimization | Commit | Benchmark Time | Speedup (relative improvement) |
+| --- | --- | --- | --- |
+| Base (simple implementation) | e29a32c | 110.1s | _N/A_ |
+| + Contiguous arrays for `g` & `p`, index by `[mask][e]` | 28a6ee7 | 14.6s | 86.7% |
+| + Exclude `start` from masks | 3986373 | 13.8s | 5.8% |
+| + Use masks only, no Vecs | 85d9c2e | 9.9s | 28.3% |
+| + Sets of similar sizes close together | 45417cd | 5.3s | 46.5% |
+| + Use arrays where possible | 3de296f | 4.7s | 10.8% |
+| + Graph layout `[to][from][offset]` | ca01127 | 4.2s | 10.3% |
+| + Flatten index incremental update | 40432b5 | 3.9s | 6.5% |
+| + `get_unchecked` adjacency accesses | 2e601c0 | 3.6s | 7.9% |
+| + Multithreading (3 cores) | 267ba4e | 1.4s | 59.8% |
+
+TODO: what's missing?
+
+TODOs:
+- Remove precomputed untranslated -- regression
 
 ## Code Overview
 
