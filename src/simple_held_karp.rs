@@ -106,6 +106,11 @@ impl HeldKarp {
         self.g = vec![Cost::MAX; FLAT_SIZE];
         self.p = vec![VertexId::MAX; FLAT_SIZE];
 
+        // Precompute conversion from IDs ignoring 'start', back to their proper
+        // VertexId.
+        let untranslated: [VertexId; MAX_PORTS] = array_init::array_init(
+            |v: usize| self.untranslate(start, v as VertexId));
+
         let max_set_items = graph.ports.len() - 1;
 
         // For |S|=1 (S={k}), smallest cost is the cost of start->k.
@@ -114,7 +119,7 @@ impl HeldKarp {
             let k = *set.elements.first().unwrap();
             let cost = graph.cost(
                 graph.tick_offset(start_tick),
-                start, self.untranslate(start, k as VertexId)) as Cost;
+                start, untranslated[k as usize]) as Cost;
             // +1 to dock
             self.g[set.element_index(0)] = start_tick + cost + 1;
             self.p[set.element_index(0)] = k;
@@ -132,8 +137,8 @@ impl HeldKarp {
                         let current_cost = self.g[set_minus_k.element_index(m)];
                         let m_k_cost = graph.cost(
                             graph.tick_offset(current_cost),
-                            self.untranslate(start, set_minus_k.elements[m]),
-                            self.untranslate(start, set.elements[k])) as Cost;
+                            untranslated[set_minus_k.elements[m] as usize],
+                            untranslated[set.elements[k] as usize]) as Cost;
                         let cost = current_cost + m_k_cost + 1;  // +1 to dock
                         (cost, set_minus_k.elements[m])
                     }).min_by_key(|&(cost, _)| cost).unwrap();
@@ -152,7 +157,7 @@ impl HeldKarp {
             let current_cost = self.g[set.element_index(k)];
             let k_start_cost = graph.cost(
                 graph.tick_offset(current_cost),
-                self.untranslate(start, set.elements[k]), start) as Cost;
+                untranslated[set.elements[k] as usize], start) as Cost;
             // Note: no +1 for docking, the last dock tick doesn't count.
             let cost = current_cost + k_start_cost;
             (cost, set.elements[k])
