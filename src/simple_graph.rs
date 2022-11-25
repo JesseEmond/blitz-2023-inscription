@@ -78,7 +78,7 @@ impl SimpleGraph {
     }
 
     pub fn tick_offset(&self, tick: u16) -> u8 {
-        ((tick as usize) % self.tick_offsets) as u8
+        ((tick as usize) % TICK_OFFSETS) as u8
     }
 }
 
