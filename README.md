@@ -960,9 +960,8 @@ Held-Karp instead._
 
 ### Held-Karp Optimizations
 Comparing incremental improvements on `simple_held_karp.rs` vs.
-`held_karp.rs`, in branch `optimization-ablation-held-karp`.
-
-TODO link branch
+`held_karp.rs`, in branch
+[`optimization-ablation-held-karp`](https://github.com/JesseEmond/blitz-2023-inscription/tree/optimization-ablation-held-karp).
 
 Going from the non-optimized "simple" version to the final one
 on the Held-Karp benchmark gives a **99%** relative
@@ -988,27 +987,26 @@ The optimizations are:
   index offset from previous value instead of recomputing full
   expression;
 - Use `get_unchecked` in graph adjacency cost accesses;
-- Multithreading, computing multiple start options in parallel.
-
-TODO link commits
+- Multithreading, computing multiple start options in parallel;
+- Precompute translation back to IDs with `start` in array;
+- Use const `TICK_OFFSETS` (10) when doing modulo to get offset
+  in the tide schedule (compiler can optimize `% CONST` to avoid
+  division).
 
 | Optimization | Commit | Benchmark Time | Speedup (relative improvement) |
 | --- | --- | --- | --- |
-| Base (simple implementation) | e29a32c | 110.1s | _N/A_ |
-| + Contiguous arrays for `g` & `p`, index by `[mask][e]` | 28a6ee7 | 14.6s | 86.7% |
-| + Exclude `start` from masks | 3986373 | 13.8s | 5.8% |
-| + Use masks only, no Vecs | 85d9c2e | 9.9s | 28.3% |
-| + Sets of similar sizes close together | 45417cd | 5.3s | 46.5% |
-| + Use arrays where possible | 3de296f | 4.7s | 10.8% |
-| + Graph layout `[to][from][offset]` | ca01127 | 4.2s | 10.3% |
-| + Flatten index incremental update | 40432b5 | 3.9s | 6.5% |
-| + `get_unchecked` adjacency accesses | 2e601c0 | 3.6s | 7.9% |
-| + Multithreading (3 cores) | 267ba4e | 1.4s | 59.8% |
-
-TODO: what's missing?
-
-TODOs:
-- Remove precomputed untranslated -- regression
+| Base (simple implementation) | [e29a32c](https://github.com/JesseEmond/blitz-2023-inscription/commit/e29a32ca0d25c1a23933d2d27a06684d768722bd) | 110.1s | _N/A_ |
+| + Contiguous arrays for `g` & `p`, index by `[mask][e]` | [28a6ee7](https://github.com/JesseEmond/blitz-2023-inscription/commit/28a6ee7341ee6deefbaed257aadb64403e148e69) | 14.6s | 86.7% |
+| + Exclude `start` from masks | [3986373](https://github.com/JesseEmond/blitz-2023-inscription/commit/3986373cb69a7ed706752e7ab114fe00b46f6eff) | 13.8s | 5.8% |
+| + Use masks only, no Vecs | [85d9c2e](https://github.com/JesseEmond/blitz-2023-inscription/commit/85d9c2e78ae1592ee931d2f88c6902b8ac1b6e94) | 9.9s | 28.3% |
+| + Sets of similar sizes close together | [45417cd](https://github.com/JesseEmond/blitz-2023-inscription/commit/45417cdcbb52f7b3f73003c44fef15e3a8ae8a03) | 5.3s | 46.5% |
+| + Use arrays where possible | [3de296f](https://github.com/JesseEmond/blitz-2023-inscription/commit/3de296f16b790e315eebc0e31cb156438c34356a) | 4.7s | 10.8% |
+| + Graph layout `[to][from][offset]` | [ca01127](https://github.com/JesseEmond/blitz-2023-inscription/commit/ca0112738b806a089c7397b857863478676a10a3) | 4.2s | 10.3% |
+| + Flatten index incremental update | [40432b5](https://github.com/JesseEmond/blitz-2023-inscription/commit/40432b53d923a029f32055e12524254e2b8eb084) | 3.9s | 6.5% |
+| + `get_unchecked` adjacency accesses | [2e601c0](https://github.com/JesseEmond/blitz-2023-inscription/commit/2e601c09fb8522ceadf0e826cf688a7306167abe) | 3.6s | 7.9% |
+| + Multithreading (3 cores) | [267ba4e](https://github.com/JesseEmond/blitz-2023-inscription/commit/267ba4e928d775073bd7a0c15a80b36de51c5776) | 1.43s | 59.8% |
+| + Precompute `untranslated` mapping | [74b8eed](https://github.com/JesseEmond/blitz-2023-inscription/commit/74b8eed581861155b89d74de32d69aa8bdf10793) | 1.39s | 3.5% |
+| + Use const TICK_OFFSETS for modulo | [92821fd](https://github.com/JesseEmond/blitz-2023-inscription/commit/92821fda2ee4dedbda0d0fd06b99f689ff1f6788) | 1.1s | 18.0% |
 
 ## Code Overview
 
