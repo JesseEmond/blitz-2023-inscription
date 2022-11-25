@@ -3,8 +3,8 @@
 Two years ago, we were [hardcoding an HTTP server in C++ and reading/writing ints
 _fast_](https://github.com/JesseEmond/blitz-2021-chal). Last year, we were
 [packing tetrominoes](https://github.com/JesseEmond/blitz-2022-inscription) with
-the added fun of msanfacon@ pretending he was participating and beating us on the
-leaderboard (spoiler alert -- he was changing his score in the database).
+the added fun of [Marc Sanfaçon](https://twitter.com/msanfacon) pretending he was
+participating and beating us on the leaderboard (spoiler alert -- he was changing his score in the database).
 
 For this year's [Coveo Blitz](https://2023.blitz.codes/) registration challenge,
 the [NP-hard](https://en.wikipedia.org/wiki/NP-hardness) problem of choice was
@@ -31,7 +31,7 @@ Here are the high level steps of how I approached this year's Blitz:
   scores:
   > I didn't know it went this far into the negatives
   >
-  > -- Andy de Montréal
+  > -- [Andy de Montréal](https://twitter.com/Drahakar)
 - Implemented pathfinding, ignoring tides for now, to get _some_ positive
   score;
 - Wrote a local version of the server to iterate faster;
@@ -103,7 +103,8 @@ are at.
 
 We must give our **action** for each tick, out of the following:
 - Sail: move in any of the 8 directions (up/down/left/right + diagonals), with
-  diagonals having the _same cost_ as horizontal/vertical movements;
+  diagonals having the _same cost_ as horizontal/vertical movements (Pythagoras
+  would be spinning in his grave);
 - Spawn: only do this once to pick where we start;
 - Dock: must be done after reaching a port to count it as visited;
 - Anchor: wait on the tile and do nothing.
