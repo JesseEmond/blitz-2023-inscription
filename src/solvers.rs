@@ -1,14 +1,16 @@
 // Different solver implementations to plan a macro sequence of paths to follow.
 
-// TODO: redo with a larger set, and include OptimalSolver
-// On a dev set with 123 games:
-// Solver                                  | Average |  Max | <1s? |
-// -----------------------------------------------------------------
-// ExactTspSolver                          |  3479.1 | 3722 |   N  |
-// ExactTspSomeStartsSolver{max_starts: 5} |  3471.8 | 3722 |   N  |
-// AntColonyOptimizationSolver             |  3470.2 | 3722 |   Y  |
-// ExactTspSomeStartsSolver{max_starts: 4} |  3469.8 | 3722 |   Y  |
-// NearestNeighborSolver                   |  3360.9 | 3704 |   Y  |
+// On a dev set with 64 20-ports games with a >= 3800 optimal score:
+// (note: for max_starts: 5, runs <1s locally, but not always on server)
+// Solver                                  | Average |  Max  | Runs |
+//                                         |  Score  | Score | <1s? |
+// ------------------------------------------------------------------
+// OptimalSolver                           |  3835.9 |  3896 |   N  |
+// ExactTspSolver                          |  3835.9 |  3896 |   N  |
+// ExactTspSomeStartsSolver{max_starts: 5} |  3827.6 |  3896 |   N  |
+// ExactTspSomeStartsSolver{max_starts: 4} |  3826.1 |  3896 |   Y  |
+// AntColonyOptimizationSolver             |  3824.2 |  3896 |   Y  |
+// NearestNeighborSolver                   |  3747.2|  3836 |   Y  |
 
 use log::{info, warn};
 use std::sync::Arc;
