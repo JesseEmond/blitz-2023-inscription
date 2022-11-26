@@ -111,7 +111,7 @@ We must give our **action** for each tick, out of the following:
 
 Visually, the game looks like this:
 
-https://user-images.githubusercontent.com/1843555/202345642-41338ea5-d4bc-4326-8b3d-16e859bdec63.mp4
+https://user-images.githubusercontent.com/1843555/204065100-78e5e0f9-b2b1-440a-855c-cd14cd3b6052.mp4
 
 #### Scoring 🧮
 The game ends if we dock the first port again (do a full tour) or if 400 ticks
@@ -154,7 +154,7 @@ Here are two games side-by-side with 20 ports that lead to very different
 optimal scores (3422 points in 263 ticks vs. 3734 points in 211 ticks), even
 though they both visit 20 ports (the optimal solver will be described later):
 
-https://user-images.githubusercontent.com/1843555/202344987-9ca0679c-5819-477a-9ae1-03f6531ca394.mp4
+https://user-images.githubusercontent.com/1843555/204065107-4efc4299-71e1-4908-886c-a19c28764cf1.mp4
 
 To give an idea of the range, here is the distribution of optimal scores for 100
 20-port games assigned to us by the server:
@@ -278,7 +278,7 @@ like this:
 With this, we start getting a boat that moves efficiently
 between ports and takes some pretty cool shortcuts!
 
-https://user-images.githubusercontent.com/1843555/202583986-708dc8a8-f441-420f-810f-d34f33e25ef9.mp4
+https://user-images.githubusercontent.com/1843555/204065113-bb4b0b4f-ea39-434b-9905-f1a9ddb0940f.mp4
 
 _Note that diagonal movements of cost 1 are visually
 unintuitive -- it often takes paths that look slower, but are
@@ -831,7 +831,7 @@ In the end, I ended up with a winning game:
   
 Here is the winning game:
 
-https://user-images.githubusercontent.com/1843555/202878765-ccdfe79c-b98c-46a0-907e-d3f90da75cef.mp4
+https://user-images.githubusercontent.com/1843555/204065128-45e5a666-7746-40e5-9312-549bbee54a28.mp4
 
 This barely put me in the first place on the
 leaderboard, with `Roach` right after at `3884`
