@@ -10,7 +10,7 @@ or sweep hyperparameters.
 
 By default, it will play some fixed game, with ASCII visualization of the game:
 
-https://user-images.githubusercontent.com/1843555/204056237-54e3cea0-df9e-41e0-b81c-433a443c3af4.mp4
+https://user-images.githubusercontent.com/1843555/204065182-f1a3d9fb-1e08-47bf-92cd-a413efcb3d20.mp4
 
 ### Options
 - `python server.py --fast`: Hide the ASCII visualization, for faster games;
